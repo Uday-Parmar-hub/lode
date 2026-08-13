@@ -1,0 +1,16 @@
+# Secrets
+.env
+
+# Confidential — real portfolio data + the downloaded technical-report corpus (big)
+corpus/
+data/
+*.xlsx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+.DS_Store
