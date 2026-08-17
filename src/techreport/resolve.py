@@ -107,7 +107,9 @@ def oldest_filing(cli: LSEG, permid: str) -> tuple[str | None, int]:
     rows = cli._gql(query).get("FinancialFiling") or []  # noqa: SLF001
     if not rows:
         return None, 0
-    return rows[0]["FilingDocument"]["DocumentSummary"]["FilingDate"][:10], 1
+    ds = (rows[0].get("FilingDocument") or {}).get("DocumentSummary") or {}
+    fd = ds.get("FilingDate")
+    return (fd[:10] if fd else None), 1
 
 
 def resolve_operators(*, sample: int | None = None) -> list[Resolution]:
@@ -126,26 +128,25 @@ def resolve_operators(*, sample: int | None = None) -> list[Resolution]:
         r = Resolution(operator=name)
         p = proposals.get(i) or {}
         r.proposed_ric, r.proposed_note = p.get("ric"), p.get("note")
-        if not r.proposed_ric:
-            r.status = "not_listed"
-            out.append(r)
-            continue
-        r.permid, r.matched_name = symbology(cli, r.proposed_ric)
-        if not r.permid:
-            r.status = "unresolved"  # Claude's RIC didn't resolve in LSEG
-            out.append(r)
-            continue
-        if not _name_matches(name, r.matched_name):
-            r.status = "resolved_mismatch"  # RIC resolved to a DIFFERENT company — wrong ticker
-            out.append(r)
-            continue
-        r.oldest_filing, _ = oldest_filing(cli, r.permid)
-        if not r.oldest_filing:
-            r.status = "resolved_no_filings"
-        elif dt.date.fromisoformat(r.oldest_filing) > thin_cutoff:
-            r.status = "resolved_thin"  # entity quirk (e.g. Alamos) — needs a second look
-        else:
-            r.status = "resolved_full"
+        try:
+            if not r.proposed_ric:
+                r.status = "not_listed"  # private / JV / unlisted — nothing to fetch
+            else:
+                r.permid, r.matched_name = symbology(cli, r.proposed_ric)
+                if not r.permid:
+                    r.status = "unresolved"  # Claude's RIC didn't resolve in LSEG
+                elif not _name_matches(name, r.matched_name):
+                    r.status = "resolved_mismatch"  # resolved to a DIFFERENT company — wrong ticker
+                else:
+                    r.oldest_filing, _ = oldest_filing(cli, r.permid)
+                    if not r.oldest_filing:
+                        r.status = "resolved_no_filings"
+                    elif dt.date.fromisoformat(r.oldest_filing) > thin_cutoff:
+                        r.status = "resolved_thin"  # entity quirk (e.g. Alamos) — 2nd look
+                    else:
+                        r.status = "resolved_full"
+        except Exception as exc:  # noqa: BLE001 — one bad operator must not abort the 142-run
+            r.status = f"error: {type(exc).__name__}"
         out.append(r)
 
     _OUT.parent.mkdir(exist_ok=True)
