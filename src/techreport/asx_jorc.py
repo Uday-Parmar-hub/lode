@@ -19,12 +19,18 @@ from .lseg import LSEG
 
 _LIMIT = 200
 
-# Titles that denote a JORC technical/economic report (resource/reserve estimate or study).
+# Titles that denote a JORC technical/economic report (resource/reserve estimate or study). Two ways
+# in: (1) a study term (feasibility / PFS / DFS / scoping / PEA / JORC), or (2) a resource/reserve word
+# WITH a report qualifier nearby (estimate/update/statement/upgrade/maiden…). The qualifier requirement
+# is deliberate: a bare "mineral resource"/"ore reserve" also matches company NAMES ("Mineral Resources
+# Limited Full Year Results") and passing mentions, which are not reports; "Reserves Policy" (governance)
+# is excluded for the same reason (no qualifier follows).
+_QUAL = r"(?:estimate|update|statement|upgrade|increase|maiden|initial|result)"
 JORC_KEYWORDS = re.compile(
-    r"ore reserve|mineral resource|jorc|feasibility study|pre-?feasibility|"
-    r"\bpfs\b|\bdfs\b|\bbfs\b|scoping study|resource estimate|reserve estimate|"
-    r"resource update|resource upgrade|mineral resource and ore reserve|\bpea\b|"
-    r"preliminary economic|resource and reserve",
+    r"jorc|feasibility|pre-?feasibility|\bpfs\b|\bdfs\b|\bbfs\b|scoping study|\bpea\b|preliminary economic"
+    r"|resources? and reserves?"
+    r"|(?:ore reserve|mineral resource|resource|reserve)s?[^.]{0,30}" + _QUAL +
+    r"|maiden[^.]{0,20}(?:resource|reserve)",
     re.I,
 )
 
