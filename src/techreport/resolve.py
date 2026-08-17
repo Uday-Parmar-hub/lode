@@ -42,25 +42,32 @@ Operators:
 """
 
 
-# Low-signal words to ignore when checking a resolved name against the operator — so the match keys
-# on the distinctive part ("Aldebaran") not the boilerplate ("Resources Inc").
-_LOW_SIGNAL = {
-    "inc", "corp", "corporation", "ltd", "limited", "plc", "nl", "sa", "spa", "ag", "the", "co",
-    "company", "resources", "resource", "mining", "minerals", "mineral", "metals", "metal", "gold",
-    "silver", "copper", "exploration", "explorations", "mines", "mine", "energy", "holdings",
-    "group", "royalty", "royalties", "and", "of",
-}
+# Corporate boilerplate (always ignored) vs. generic mining words (ignored only when keying on the
+# DISTINCTIVE part). Splitting them fixes all-generic names like "Group 6 Metals" / "Mineral
+# Resources", which have no distinctive token and would otherwise never match.
+_CORP = {"inc", "corp", "corporation", "ltd", "limited", "plc", "nl", "sa", "spa", "ag", "the",
+         "co", "company", "and", "of"}
+_GENERIC = {"resources", "resource", "mining", "minerals", "mineral", "metals", "metal", "gold",
+            "silver", "copper", "exploration", "explorations", "mines", "mine", "energy",
+            "holdings", "group", "royalty", "royalties"}
 
 
-def _tokens(name: str) -> set[str]:
+def _tokens(name: str, *, strip_generic: bool = True) -> set[str]:
+    stop = _CORP | (_GENERIC if strip_generic else set())
     return {w for w in re.sub(r"[^a-z0-9 ]", " ", (name or "").lower()).split()
-            if len(w) > 1 and w not in _LOW_SIGNAL}
+            if len(w) > 1 and w not in stop}
 
 
 def _name_matches(operator: str, matched: str | None) -> bool:
-    """True if the resolved company name shares a distinctive token with the operator name."""
-    o, m = _tokens(operator), _tokens(matched or "")
-    return bool(o and m and (o & m))
+    """True if the resolved company name is the operator. Keys on the distinctive token(s) when there
+    are any ("Aldebaran"); for all-generic names ("Mineral Resources") requires every operator word
+    to be present in the resolved name (so a lone shared "Gold"/"Copper" can't false-match)."""
+    strong = _tokens(operator)
+    matched_all = _tokens(matched or "", strip_generic=False)
+    if strong:
+        return bool(strong & matched_all)
+    op_all = _tokens(operator, strip_generic=False)
+    return bool(op_all) and op_all <= matched_all
 
 
 @dataclass
