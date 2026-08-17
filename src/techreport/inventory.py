@@ -55,22 +55,29 @@ def _tag(reports: list[dict], regime: str, source: str) -> list[dict]:
 
 def _collect(cli: LSEG, r: dict, cikmap: dict[str, dict]) -> dict:
     """Gather every regime's reports for one resolved operator into a merged record."""
-    name, permid, ric = r["operator"], r["permid"], r.get("proposed_ric")
-    reports: list[dict] = _tag(technical_reports(cli, permid), "NI 43-101", "lseg_sedar")
+    name, permid, ric = r["operator"], r.get("permid"), r.get("proposed_ric")
     rec: dict = {"operator": name, "permid": permid, "ric": ric, "status": r["status"]}
+    reports: list[dict] = []
+    if permid:  # SEDAR keys on the LSEG entity; EDGAR-only overrides (no permid) skip it
+        reports += _tag(technical_reports(cli, permid), "NI 43-101", "lseg_sedar")
 
-    # US S-K 1300 — only when the RIC is a US symbol and the CIK name-verifies.
-    ticker, is_us = edgar.ticker_from_ric(ric)
-    if is_us and ticker:
-        cik, sec_name = edgar.cik_for(ticker, name, cikmap)
-        if cik:
-            reports += _tag(edgar.technical_report_summaries(cik), "S-K 1300", "sec_edgar")
-            rec["cik"] = cik
-        elif sec_name:
-            rec["edgar_note"] = f"ticker {ticker} -> '{sec_name}' (name mismatch, skipped)"
+    # US S-K 1300 — a manual CIK override wins (trusted); else the RIC's US ticker, name-verified.
+    cik_override = r.get("cik_override")
+    if cik_override:
+        reports += _tag(edgar.technical_report_summaries(cik_override), "S-K 1300", "sec_edgar")
+        rec["cik"] = cik_override
+    else:
+        ticker, is_us = edgar.ticker_from_ric(ric)
+        if is_us and ticker:
+            cik, sec_name = edgar.cik_for(ticker, name, cikmap)
+            if cik:
+                reports += _tag(edgar.technical_report_summaries(cik), "S-K 1300", "sec_edgar")
+                rec["cik"] = cik
+            elif sec_name:
+                rec["edgar_note"] = f"ticker {ticker} -> '{sec_name}' (name mismatch, skipped)"
 
     # Australia JORC — CRIS announcements, title-filtered (history may be capped).
-    if (ric or "").upper().endswith(".AX"):
+    if permid and (ric or "").upper().endswith(".AX"):
         jorc, capped = jorc_reports(cli, permid)
         reports += _tag(jorc, "JORC", "lseg_cris")
         rec["capped_jorc"] = capped
@@ -94,8 +101,10 @@ def _collect(cli: LSEG, r: dict, cikmap: dict[str, dict]) -> dict:
 def build_inventory() -> list[dict]:
     """For every resolved operator, inventory its reports across all regimes; write + return manifest."""
     resolutions = json.loads(_RES.read_text(encoding="utf-8"))
+    # Process anything with a usable identifier: an LSEG permid (SEDAR/JORC) OR a manual CIK (EDGAR).
     resolved = [r for r in resolutions
-                if r.get("permid") and r["status"] in ("resolved_full", "resolved_thin")]
+                if (r.get("permid") or r.get("cik_override"))
+                and r["status"] in ("resolved_full", "resolved_thin", "resolved_manual")]
     cikmap = edgar.load_cik_map()
 
     cli = LSEG()
