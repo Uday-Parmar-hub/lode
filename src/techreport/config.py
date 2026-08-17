@@ -24,6 +24,11 @@ KSCOPE_API_KEY = os.environ.get("KSCOPE_API_KEY")
 KSCOPE_BASE_URL = os.environ.get("KSCOPE_BASE_URL", "https://api.kscope.io")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
+# LSEG Global Filings — the deep-history filing source (see CLAUDE.md; trial creds).
+LSEG_USERNAME = os.environ.get("LSEG_USERNAME")
+LSEG_PASSWORD = os.environ.get("LSEG_PASSWORD")
+LSEG_APP_KEY = os.environ.get("LSEG_APP_KEY")
+
 # The portfolio drives the whole corpus (asset -> operator -> source). Real portfolio data, so the
 # xlsx is NOT committed — it's read from its location in $HOME by default (override with env).
 PORTFOLIO_XLSX = Path(
