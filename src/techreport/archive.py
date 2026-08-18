@@ -113,7 +113,13 @@ class Archiver:
         url = rep.get("url")
         if not url:
             return self._finish(operator, rep, stem, "", None, 0)
-        r = httpx.get(url, headers=edgar._headers(), timeout=90.0, follow_redirects=True)  # noqa: SLF001
+        r = None
+        for attempt in range(4):  # SEC throttles large TRS files with transient 503/429
+            r = httpx.get(url, headers=edgar._headers(), timeout=90.0, follow_redirects=True)  # noqa: SLF001
+            if r.status_code in (503, 429) and attempt < 3:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            break
         r.raise_for_status()
         time.sleep(_EDGAR_POLITE_SECS)
         raw = r.content
@@ -179,6 +185,12 @@ class Archiver:
         return self.manifest
 
     def _save(self) -> None:
+        # Dedupe by report key, last-wins — so a retried report updates its record instead of adding a
+        # stale duplicate (a re-run's fresh 'ok' supersedes the earlier 'error').
+        deduped: dict[str, dict] = {}
+        for m in self.manifest:
+            deduped[m.get("key")] = m
+        self.manifest = list(deduped.values())
         _MANIFEST.write_text(json.dumps(self.manifest, indent=1), encoding="utf-8")
 
 
