@@ -29,16 +29,33 @@ export interface Royalty {
   regime: string | null;
   source_label: string | null;
   source_url: string | null;
+  source_date: string | null;
   quote: string | null;
   quote_verified: boolean;
+  // identity / meta
+  sp_id: string | null;
+  est_startup: string | null;
+  royalty_created: string | null;
+  // human review + score layer
   status: string;
+  tier: number | null;
+  rank: number | null;
+  keep: boolean | null;
+  score_project_quality: number | null;
+  score_instrument_quality: number | null;
+  score_confidence: number | null;
+  score_actionable: number | null;
+  comments: string | null;
+  link: string | null;
 }
 
-const COLS = `id::text as id, project_name as asset, operator, jurisdiction as juris, commodity,
-  stage, rate, rate_pct::float8 as rate_pct, royalty_type as type, holder, holder_note,
-  royalty_available::text as avail, extract_confidence as conf,
+const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdiction as juris, commodity,
+  stage, est_startup, rate, rate_pct::float8 as rate_pct, royalty_type as type, holder, holder_note,
+  royalty_available::text as avail, extract_confidence as conf, royalty_created,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
-  regime, source_label, source_url, source_quote as quote, quote_verified, status::text as status`;
+  regime, source_label, source_url, source_date::text as source_date, source_quote as quote, quote_verified,
+  status::text as status, tier, rank, keep,
+  score_project_quality, score_instrument_quality, score_confidence, score_actionable, comments, link`;
 
 /** Primary royalties (one per asset-royalty after dedup), available-first then by rate. */
 export function getRoyalties(limit = 1500): Promise<Royalty[]> {

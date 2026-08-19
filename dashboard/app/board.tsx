@@ -1,18 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Royalty, Kpis } from "@/lib/queries";
+import { saveReview, type ReviewPatch } from "./actions";
 
 const M: Record<string, string> = {
   Au: "#e8b45a", Ag: "#c9cfd8", Cu: "#cd7d4c", Mo: "#6e8ba6",
   Ni: "#8fb3a0", Zn: "#9aa3b2", PGE: "#b39cd0",
 };
 const METALS = ["Au", "Ag", "Cu", "Ni", "Zn", "Mo", "PGE"];
-const STAGES = ["Producing", "Development", "Construction", "Resource", "Exploration", "PEA", "PFS", "FS"];
 const REGIMES = ["NI 43-101", "S-K 1300", "JORC"];
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
-// Which structured features are present on a row → compact chips (the thing Matt tracks).
 function featureList(r: Royalty): { k: string; v: string }[] {
   const out: { k: string; v: string }[] = [];
   if (r.buyback) out.push({ k: "buy-down", v: r.buyback });
@@ -33,16 +32,15 @@ const COLS: { k: keyof Royalty | "features"; t: string; w: number; nosort?: bool
 ];
 
 function Commodity({ c }: { c: string[] }) {
-  return (
-    <div className="comm">
-      {(c || []).map((x, i) => (
-        <span key={i} style={{ ["--cc" as string]: M[x] || "#5f584c" }}>{x}</span>
-      ))}
-    </div>
-  );
+  return <div className="comm">{(c || []).map((x, i) => <span key={i} style={{ ["--cc" as string]: M[x] || "#5f584c" }}>{x}</span>)}</div>;
+}
+function StatusDot({ s }: { s: string }) {
+  const col = s === "validated" ? "var(--ok)" : s === "rejected" ? "var(--alert,#e0715a)" : s === "needs_info" ? "var(--warn)" : "var(--dim)";
+  return <span title={s} style={{ width: 7, height: 7, borderRadius: "50%", background: col, flex: "none", display: "inline-block" }} />;
 }
 
 export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis: Kpis }) {
+  const [data, setData] = useState<Royalty[]>(royalties);
   const [q, setQ] = useState("");
   const [comm, setComm] = useState<Set<string>>(new Set());
   const [stage, setStage] = useState<Set<string>>(new Set());
@@ -50,7 +48,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [sort, setSort] = useState<string>("rate_pct");
   const [dir, setDir] = useState(-1);
   const [view, setView] = useState<"table" | "cards">("table");
-  const [sel, setSel] = useState<Royalty | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
 
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, v: string) => {
     const n = new Set(set); n.has(v) ? n.delete(v) : n.add(v); setter(n);
@@ -59,7 +57,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const rows = useMemo(() => {
     const ql = q.trim().toLowerCase();
     const words = ql.split(/[^a-z0-9.%]+/).filter((w) => w.length > 1 && !["under", "with", "and", "the", "an", "or", "in", "a"].includes(w));
-    const out = royalties.filter((r) => {
+    const out = data.filter((r) => {
       if (comm.size && !(r.commodity || []).some((c) => comm.has(c))) return false;
       if (stage.size && !(r.stage && [...stage].some((s) => r.stage!.toLowerCase().includes(s.toLowerCase())))) return false;
       if (regime.size && !(r.regime && regime.has(r.regime))) return false;
@@ -69,20 +67,31 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       }
       return true;
     });
-    const sv = (r: Royalty) => {
-      const v = (r as unknown as Record<string, unknown>)[sort];
-      return typeof v === "number" ? v : (v ?? "").toString().toLowerCase();
-    };
-    out.sort((a, b) => {
-      const x = sv(a), y = sv(b);
-      if (x === y) return 0;
-      // nulls/empties last regardless of dir
-      if (x === "" || x === null) return 1;
-      if (y === "" || y === null) return -1;
-      return (x < y ? -1 : 1) * dir;
-    });
+    const sv = (r: Royalty) => { const v = (r as unknown as Record<string, unknown>)[sort]; return typeof v === "number" ? v : (v ?? "").toString().toLowerCase(); };
+    out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
     return out;
-  }, [royalties, q, comm, stage, regime, sort, dir]);
+  }, [data, q, comm, stage, regime, sort, dir]);
+
+  const selIdx = selId ? rows.findIndex((r) => r.id === selId) : -1;
+  const sel = selIdx >= 0 ? rows[selIdx] : null;
+
+  // keyboard nav in review mode (skip when typing)
+  useEffect(() => {
+    if (!sel) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT")) return;
+      if (e.key === "Escape") setSelId(null);
+      else if (e.key === "ArrowDown") { e.preventDefault(); setSelId(rows[Math.min(rows.length - 1, selIdx + 1)]?.id ?? null); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setSelId(rows[Math.max(0, selIdx - 1)]?.id ?? null); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sel, selIdx, rows]);
+
+  const applyReview = (id: string, patch: Partial<Royalty>) => {
+    setData((d) => d.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
 
   const Chip = ({ label, on, color, onClick }: { label: string; on: boolean; color?: string; onClick: () => void }) => (
     <span className={`chip${on ? " on" : ""}`} style={color ? { ["--c" as string]: color } : undefined} onClick={onClick}>
@@ -93,13 +102,10 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   return (
     <main>
       <div className="cmd">
-        <div className="brand">
-          <div className="mark" />
-          <div><div className="word">LODE</div><div className="tag">Royalty Origination · OR Royalties</div></div>
-        </div>
+        <div className="brand"><div className="mark" /><div><div className="word">LODE</div><div className="tag">Royalty Origination · OR Royalties</div></div></div>
         <div className="search">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder='Search asset, operator, holder, jurisdiction…' />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search asset, operator, holder, jurisdiction…" />
         </div>
         <div className="kstats">
           <div className="kstat"><div className="n au">{kpis.royalties.toLocaleString()}</div><div className="l">Royalties</div></div>
@@ -118,103 +124,158 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         <span className="glabel" style={{ marginLeft: 6 }}>Regime</span>
         {REGIMES.map((r) => <Chip key={r} label={r} on={regime.has(r)} onClick={() => toggle(regime, setRegime, r)} />)}
         <div className="rt">
-          <div className="toggle">
+          {!sel && <div className="toggle">
             <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>▤ Table</button>
             <button className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}>▦ Cards</button>
-          </div>
-          <span className="count"><b>{rows.length}</b> / {royalties.length}</span>
+          </div>}
+          <span className="count"><b>{rows.length}</b> / {data.length}</span>
         </div>
       </div>
 
-      {view === "table" ? (
+      {sel ? (
+        <div className="split">
+          <div className="rail">
+            {rows.map((r) => (
+              <div key={r.id} className={`railrow${r.id === selId ? " active" : ""}`} onClick={() => setSelId(r.id)}>
+                <span className="vein" style={{ background: M[(r.commodity || [])[0]] || "#5f584c" }} />
+                <div className="rmid"><div className="rn">{r.asset}</div><div className="rsub">{r.operator ?? ""}</div></div>
+                <div className="rend"><div className="rr">{r.rate ?? "—"}</div><StatusDot s={r.status} /></div>
+              </div>
+            ))}
+          </div>
+          <div className="detail-pane">
+            <Detail key={sel.id} r={sel} idx={selIdx} total={rows.length}
+              onNav={(d) => setSelId(rows[Math.min(rows.length - 1, Math.max(0, selIdx + d))]?.id ?? null)}
+              onClose={() => setSelId(null)} onApply={(patch) => applyReview(sel.id, patch)} />
+          </div>
+        </div>
+      ) : view === "table" ? (
         <div className="tablewrap">
           <table>
-            <thead><tr>{COLS.map((c) => {
-              const on = sort === c.k;
-              return (
-                <th key={c.k as string} className={on ? "sorted" : ""}
-                  style={{ width: `${c.w}%`, ...(c.nosort ? { cursor: "default" } : {}) }}
-                  onClick={() => { if (c.nosort) return; if (sort === c.k) setDir(-dir); else { setSort(c.k as string); setDir(1); } }}>
-                  {c.t}{!c.nosort && on && <span className="ar">{dir < 0 ? "↓" : "↑"}</span>}
-                </th>
-              );
-            })}</tr></thead>
+            <thead><tr>{COLS.map((c) => { const on = sort === c.k; return (
+              <th key={c.k as string} className={on ? "sorted" : ""} style={{ width: `${c.w}%`, ...(c.nosort ? { cursor: "default" } : {}) }}
+                onClick={() => { if (c.nosort) return; if (sort === c.k) setDir(-dir); else { setSort(c.k as string); setDir(1); } }}>
+                {c.t}{!c.nosort && on && <span className="ar">{dir < 0 ? "↓" : "↑"}</span>}
+              </th>); })}</tr></thead>
             <tbody>
-              {rows.map((r) => {
-                const vein = M[(r.commodity || [])[0]] || "#5f584c";
-                const feats = featureList(r);
-                return (
-                  <tr key={r.id} onClick={() => setSel(r)}>
-                    <td className="asset" style={{ ["--vein" as string]: vein }}><span className="vein" /><span className="nm">{r.asset}</span></td>
-                    <td className="op">{r.operator}</td>
-                    <td className="juris">{r.juris}</td>
-                    <td><Commodity c={r.commodity} /></td>
-                    <td>{r.stage && <span className="stage">{r.stage}</span>}</td>
-                    <td className="rate"><div className="v">{r.rate ?? "—"}</div></td>
-                    <td className="type">{r.type}</td>
-                    <td className="holder"><div className="h">{r.holder ?? "—"}</div>{r.holder_note && <div className="hn">{r.holder_note}</div>}</td>
-                    <td><div className="comm">{feats.slice(0, 3).map((f, i) => <span key={i} style={{ ["--cc" as string]: "#2a2419", color: "var(--gold-hi)" }}>{f.k}</span>)}{!feats.length && <span style={{ color: "var(--text-3)" }}>—</span>}</div></td>
-                    <td className="src">{r.source_label} {r.quote_verified && <span className="verified">✓</span>}</td>
-                  </tr>
-                );
-              })}
+              {rows.map((r) => { const vein = M[(r.commodity || [])[0]] || "#5f584c"; const feats = featureList(r); return (
+                <tr key={r.id} onClick={() => setSelId(r.id)}>
+                  <td className="asset" style={{ ["--vein" as string]: vein }}><span className="vein" /><span className="nm">{r.asset}</span></td>
+                  <td className="op">{r.operator}</td>
+                  <td className="juris">{r.juris}</td>
+                  <td><Commodity c={r.commodity} /></td>
+                  <td>{r.stage && <span className="stage">{r.stage}</span>}</td>
+                  <td className="rate"><div className="v">{r.rate ?? "—"}</div></td>
+                  <td className="type">{r.type}</td>
+                  <td className="holder"><div className="h">{r.holder ?? "—"}</div>{r.holder_note && <div className="hn">{r.holder_note}</div>}</td>
+                  <td><div className="comm">{feats.slice(0, 3).map((f, i) => <span key={i} style={{ ["--cc" as string]: "#2a2419", color: "var(--gold-hi)" }}>{f.k}</span>)}{!feats.length && <span style={{ color: "var(--text-3)" }}>—</span>}</div></td>
+                  <td className="src">{r.source_label} {r.quote_verified && <span className="verified">✓</span>}</td>
+                </tr>); })}
             </tbody>
           </table>
         </div>
       ) : (
         <div className="cards">
-          {rows.map((r) => {
-            const vein = M[(r.commodity || [])[0]] || "#5f584c";
-            return (
-              <div key={r.id} className="card" style={{ ["--vein" as string]: vein }} onClick={() => setSel(r)}>
-                <div className="ctop">
-                  <div><div className="nm">{r.asset}</div><div className="op2">{r.operator} · {r.juris}</div></div>
-                  <div><div className="rr">{r.rate ?? "—"}</div><div className="rt2">{r.type}</div></div>
-                </div>
-                <div className="mid"><Commodity c={r.commodity} />{r.stage && <span className="stage">{r.stage}</span>}</div>
-                <div className="foot"><span className="hh">held by <b>{r.holder ?? "—"}</b></span>{r.quote_verified && <span className="verified" style={{ fontSize: 12 }}>✓ verified</span>}</div>
-              </div>
-            );
-          })}
+          {rows.map((r) => { const vein = M[(r.commodity || [])[0]] || "#5f584c"; return (
+            <div key={r.id} className="card" style={{ ["--vein" as string]: vein }} onClick={() => setSelId(r.id)}>
+              <div className="ctop"><div><div className="nm">{r.asset}</div><div className="op2">{r.operator} · {r.juris}</div></div><div><div className="rr">{r.rate ?? "—"}</div><div className="rt2">{r.type}</div></div></div>
+              <div className="mid"><Commodity c={r.commodity} />{r.stage && <span className="stage">{r.stage}</span>}</div>
+              <div className="foot"><span className="hh">held by <b>{r.holder ?? "—"}</b></span>{r.quote_verified && <span className="verified" style={{ fontSize: 12 }}>✓ verified</span>}</div>
+            </div>); })}
         </div>
       )}
-
-      <div className={`backdrop${sel ? " open" : ""}`} onClick={() => setSel(null)} />
-      <aside className={`drawer${sel ? " open" : ""}`}>
-        {sel && <Detail r={sel} onClose={() => setSel(null)} />}
-      </aside>
-      <div className="mockflag">LIVE DB · {kpis.royalties.toLocaleString()} royalties · pending review</div>
+      <div className="mockflag">LIVE DB · {kpis.royalties.toLocaleString()} royalties · {kpis.pending} pending review</div>
     </main>
   );
 }
 
-function Detail({ r, onClose }: { r: Royalty; onClose: () => void }) {
+function Cell({ k, v, gold }: { k: string; v: React.ReactNode; gold?: boolean }) {
+  return <div className="cell"><div className="k">{k}</div><div className={`v${gold ? " au" : ""}`}>{v ?? "—"}</div></div>;
+}
+
+function Detail({ r, idx, total, onNav, onClose, onApply }: {
+  r: Royalty; idx: number; total: number; onNav: (d: number) => void; onClose: () => void; onApply: (p: Partial<Royalty>) => void;
+}) {
   const feats = featureList(r);
+  const [draft, setDraft] = useState<ReviewPatch>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  useEffect(() => { setDraft({}); }, [r.id]);
+  const cur = <K extends keyof ReviewPatch>(k: K): ReviewPatch[K] =>
+    (draft[k] !== undefined ? draft[k] : (r as unknown as Record<string, unknown>)[k]) as ReviewPatch[K];
+
+  const persist = async (extra: ReviewPatch) => {
+    const patch = { ...draft, ...extra };
+    setSaving(extra.status ?? "save");
+    const res = await saveReview(r.id, patch);
+    setSaving(null);
+    if (res.ok) onApply(patch as Partial<Royalty>);
+  };
+  const SCORES: [keyof ReviewPatch, string][] = [
+    ["score_project_quality", "Project quality"], ["score_instrument_quality", "Instrument quality"],
+    ["score_confidence", "Confidence"], ["score_actionable", "Actionable"],
+  ];
+
   return (
     <div className="dpad">
-      <button className="dclose" onClick={onClose}>✕</button>
+      <div className="dnav">
+        <button onClick={() => onNav(-1)} disabled={idx <= 0} title="Previous (↑)">↑</button>
+        <button onClick={() => onNav(1)} disabled={idx >= total - 1} title="Next (↓)">↓</button>
+        <span className="pos">{idx + 1} / {total}</span>
+        <span style={{ flex: 1 }} />
+        <span className={`pill ${r.status}`}><StatusDot s={r.status} />{cap(r.status)}</span>
+        <button onClick={onClose} title="Close (Esc)">✕</button>
+      </div>
       <div className="deye">{r.stage} · {r.juris}</div>
       <div className="dtitle">{r.asset}</div>
       <div className="dmeta">{r.operator}</div>
+
+      <div className="sec">Royalty</div>
       <div className="dgrid">
-        <div className="cell"><div className="k">Headline royalty</div><div className="v au">{r.rate} {r.type}</div></div>
-        <div className="cell"><div className="k">Review</div><div className="v"><span className={`pill ${r.avail}`}><span className="d" />{cap(r.status)}</span></div></div>
-        <div className="cell"><div className="k">Held by</div><div className="v">{r.holder ?? "—"}</div></div>
-        <div className="cell"><div className="k">Commodities</div><div className="v">{(r.commodity || []).join(" · ")}</div></div>
+        <Cell k="Rate" v={`${r.rate ?? "—"} ${r.type ?? ""}`} gold />
+        <Cell k="Held by" v={<>{r.holder ?? "—"}{r.holder_note && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.holder_note}</div>}</>} />
+        <Cell k="Commodity" v={(r.commodity || []).join(" · ")} />
+        <Cell k="Regime" v={r.regime} />
       </div>
+
+      <div className="sec">Asset</div>
+      <div className="dgrid">
+        <Cell k="Jurisdiction" v={r.juris} />
+        <Cell k="Stage / est. start" v={[r.stage, r.est_startup].filter(Boolean).join(" · ")} />
+        <Cell k="S&P ID" v={r.sp_id} />
+        <Cell k="Royalty granted" v={r.royalty_created} />
+      </div>
+
       <div className="sec">Verbatim from the technical report</div>
       <div className="assay">
         <div className="q">“{r.quote}”</div>
-        <div className="cite">{r.source_label} &nbsp;·&nbsp; {r.quote_verified ? <span className="verified">✓ source-verified</span> : <span>unverified</span>}</div>
+        <div className="cite">{r.source_label} &nbsp;·&nbsp; {r.quote_verified ? <span className="verified">✓ source-verified</span> : <span>unverified</span>}{r.source_url && (<> &nbsp;·&nbsp; <a href={r.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--gold-hi)" }}>open ↗</a></>)}</div>
       </div>
-      {feats.length > 0 && (
-        <>
-          <div className="sec">Royalty features</div>
-          <div className="feat">{feats.map((f, i) => (
-            <div key={i} className="frow"><span className="fk">{f.k}</span><span className="fv">{f.v}</span></div>
-          ))}</div>
-        </>
-      )}
+
+      <div className="sec">Royalty features</div>
+      {feats.length ? (
+        <div className="feat">{feats.map((f, i) => <div key={i} className="frow"><span className="fk">{f.k}</span><span className="fv">{f.v}</span></div>)}</div>
+      ) : <div style={{ color: "var(--text-3)", fontSize: 13 }}>None disclosed — a straightforward royalty.</div>}
+
+      <div className="sec">Review · analyst</div>
+      <div className="review">
+        <div className="rfield"><span className="rk">Tier</span>
+          <div className="seg">{[1, 2, 3].map((t) => <button key={t} className={cur("tier") === t ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, tier: d.tier === t ? null : t }))}>{t}</button>)}</div>
+        </div>
+        <div className="rfield"><span className="rk">Keep?</span>
+          <div className="seg"><button className={cur("keep") === true ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, keep: true }))}>Yes</button><button className={cur("keep") === false ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, keep: false }))}>No</button></div>
+        </div>
+        {SCORES.map(([k, label]) => (
+          <div className="rfield" key={k as string}><span className="rk">{label}</span>
+            <div className="seg">{[1, 2, 3, 4, 5].map((n) => <button key={n} className={cur(k) === n ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, [k]: d[k] === n ? null : n }))}>{n}</button>)}</div>
+          </div>
+        ))}
+        <textarea placeholder="Comments — grounds the decision…" defaultValue={r.comments ?? ""} onChange={(e) => setDraft((d) => ({ ...d, comments: e.target.value }))} />
+      </div>
+      <div className="dact">
+        <button className="btn primary" disabled={!!saving} onClick={() => persist({ status: "validated" })}>{saving === "validated" ? "Saving…" : "Validate"}</button>
+        <button className="btn ghost" disabled={!!saving} onClick={() => persist({ status: "rejected" })}>Reject</button>
+        <button className="btn ghost" disabled={!!saving} onClick={() => persist({})}>Save</button>
+      </div>
     </div>
   );
 }
