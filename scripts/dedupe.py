@@ -19,12 +19,17 @@ them separate on purpose — merging them safely requires entity resolution.
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from techreport import db  # noqa: E402
+from techreport import config, db  # noqa: E402
+
+# Semantic-merge ledger from scripts/resolve_holders.py (LLM-proposed, human-reviewable). Optional:
+# without it, dedupe.py is purely the deterministic pass 1.
+LEDGER = config.ROOT / "data" / "holder_merges.json"
 
 # accented -> ascii fold (Kandiolé -> kandiole, etc.)
 _ACC = "'áàâäãéèêëíìîïóòôöõúùûüçñ','aaaaaeeeeiiiiooooouuuucn'"
@@ -67,6 +72,32 @@ _NHOLD = (
 DUPKEY_SQL = f"({_NASSET}||'|'||{_CTYPE}||'|'||{_RKEY}||'|'||{_NHOLD})"
 
 
+def apply_ledger(cur) -> int:
+    """Apply the semantic merges: point every merged row's dup_key at the canonical row's dup_key,
+    so the whole lineage shares one canonical group (and one corroboration count). Idempotent."""
+    if not LEDGER.exists():
+        return 0
+    merges = json.loads(LEDGER.read_text(encoding="utf-8"))
+    applied = 0
+    for m in merges:
+        cur.execute("select dup_key from royalties where id=%s", (m["canonical_id"],))
+        row = cur.fetchone()
+        if not row:
+            continue
+        kc = row[0]
+        for mid in m["member_ids"]:
+            if mid == m["canonical_id"]:
+                continue
+            cur.execute("select dup_key from royalties where id=%s", (mid,))
+            r2 = cur.fetchone()
+            if not r2 or r2[0] == kc or r2[0] is None:
+                continue
+            # move the member's whole re-report group under the canonical key
+            cur.execute("update royalties set dup_key=%s where dup_key=%s", (kc, r2[0]))
+        applied += 1
+    return applied
+
+
 def main() -> None:
     with db.connect() as conn:
         cur = conn.cursor()
@@ -79,6 +110,7 @@ def main() -> None:
         try:
             cur.execute(f"update royalties set dup_key = {DUPKEY_SQL}")
             cur.execute("create index if not exists idx_roy_dupkey on royalties (dup_key)")
+            merges = apply_ledger(cur)  # semantic pass 2 (no-op if the ledger is absent)
             # surface the newest / most-trustworthy row per dup_key; retain the rest (is_primary=false)
             cur.execute(
                 """
@@ -101,7 +133,8 @@ def main() -> None:
         after = cur.fetchone()[0]
         conn.commit()
 
-    print(f"rows: {total}   primary: {before} -> {after}   (collapsed {before - after} duplicate re-reports)")
+    ledger_note = f" (incl. {merges} semantic holder-merges)" if merges else " (deterministic only; no ledger)"
+    print(f"rows: {total}   primary: {before} -> {after}   (collapsed {before - after} duplicates){ledger_note}")
 
 
 if __name__ == "__main__":
