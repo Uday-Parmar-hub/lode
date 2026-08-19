@@ -1,0 +1,15 @@
+# Local Postgres for LODE (Tool 2). Port 5433 so it never clashes with MarketWatch's 5432.
+services:
+  db:
+    image: postgres:16
+    container_name: lode-postgres
+    environment:
+      POSTGRES_USER: lode
+      POSTGRES_PASSWORD: lode
+      POSTGRES_DB: lode
+    ports:
+      - "5433:5432"
+    volumes:
+      - lode_pgdata:/var/lib/postgresql/data
+volumes:
+  lode_pgdata:
