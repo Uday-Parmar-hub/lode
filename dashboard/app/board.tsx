@@ -168,7 +168,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
                   <td className="rate"><div className="v">{r.rate ?? "—"}</div></td>
                   <td className="type">{r.type}</td>
                   <td className="holder"><div className="h">{r.holder ?? "—"}</div>{r.holder_note && <div className="hn">{r.holder_note}</div>}</td>
-                  <td><div className="comm">{feats.slice(0, 3).map((f, i) => <span key={i} style={{ ["--cc" as string]: "#2a2419", color: "var(--gold-hi)" }}>{f.k}</span>)}{!feats.length && <span style={{ color: "var(--text-3)" }}>—</span>}</div></td>
+                  <td><div className="fchips">{feats.slice(0, 3).map((f, i) => <span key={i} className="fchip">{f.k}</span>)}{!feats.length && <span style={{ color: "var(--text-3)" }}>—</span>}</div></td>
                   <td className="src">{r.source_label} {r.quote_verified && <span className="verified">✓</span>}</td>
                 </tr>); })}
             </tbody>
@@ -176,11 +176,14 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         </div>
       ) : (
         <div className="cards">
-          {rows.map((r) => { const vein = M[(r.commodity || [])[0]] || "#5f584c"; return (
+          {rows.map((r) => { const vein = M[(r.commodity || [])[0]] || "#5f584c"; const feats = featureList(r); return (
             <div key={r.id} className="card" style={{ ["--vein" as string]: vein }} onClick={() => setSelId(r.id)}>
-              <div className="ctop"><div><div className="nm">{r.asset}</div><div className="op2">{r.operator} · {r.juris}</div></div><div><div className="rr">{r.rate ?? "—"}</div><div className="rt2">{r.type}</div></div></div>
-              <div className="mid"><Commodity c={r.commodity} />{r.stage && <span className="stage">{r.stage}</span>}</div>
-              <div className="foot"><span className="hh">held by <b>{r.holder ?? "—"}</b></span>{r.quote_verified && <span className="verified" style={{ fontSize: 12 }}>✓ verified</span>}</div>
+              <div className="ctop">
+                <div className="cinfo"><div className="nm">{r.asset}</div><div className="op2">{r.operator} · {r.juris}</div></div>
+                <div className="crate"><div className="rr">{r.rate ?? "—"}</div><div className="rt2">{r.type}</div></div>
+              </div>
+              <div className="mid"><Commodity c={r.commodity} />{r.stage && <span className="stage">{r.stage}</span>}{feats.slice(0, 2).map((f, i) => <span key={i} className="fchip">{f.k}</span>)}</div>
+              <div className="foot"><span className="hh">held by <b>{r.holder ?? "—"}</b></span>{r.quote_verified && <span className="verified" style={{ fontSize: 12, flex: "none" }}>✓ verified</span>}</div>
             </div>); })}
         </div>
       )}
