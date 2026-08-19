@@ -56,28 +56,16 @@ def rate_pct(s: str | None) -> float | None:
     return v if v <= 25 else None   # a real NSR/GSR/NPI rate; excludes "100%"/"20% of price" streams
 
 
-def buckets(cond: str | None):
-    """Rough map of the pilot's single free-text `conditions` into feature fields (until the schema
-    upgrade extracts them structurally). Keeps the raw text in features_note regardless."""
-    c = (cond or "").lower()
-    return {
-        "buyback": cond if ("buy" in c or "buy-down" in c or "buyback" in c) else None,
-        "step_down": cond if ("sliding" in c or "step" in c) else None,
-        "production_cap": cond if "cap" in c else None,
-        "partial_coverage": True if ("partial" in c or "area" in c) else None,
-    }
-
-
 INSERT = """
 INSERT INTO royalties
  (project_name, operator, commodity, jurisdiction, stage,
   royalty_type, rate, rate_pct, holder, holder_note, royalty_available, extract_confidence,
-  buyback, step_down, production_cap, partial_coverage, features_note,
+  partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_docid, source_label, source_url, source_date, source_quote, quote_verified,
   status, ingested_from)
  VALUES (%(project_name)s,%(operator)s,%(commodity)s,%(jurisdiction)s,%(stage)s,
   %(royalty_type)s,%(rate)s,%(rate_pct)s,%(holder)s,%(holder_note)s,'unknown',%(conf)s,
-  %(buyback)s,%(step_down)s,%(production_cap)s,%(partial_coverage)s,%(features_note)s,
+  %(partial_coverage)s,%(advance_payments)s,%(production_threshold)s,%(production_cap)s,%(buyback)s,%(step_down)s,%(rofr)s,%(features_note)s,
   %(regime)s,%(source_docid)s,%(source_label)s,%(source_url)s,%(source_date)s,%(source_quote)s,%(quote_verified)s,
   'pending','pilot')
  ON CONFLICT (source_docid, project_name, holder, royalty_type) DO NOTHING
@@ -105,7 +93,6 @@ for rec in pilot:
     if not rec.get("has_third_party_royalty") or not rec.get("royalties"):
         continue
     for roy in rec["royalties"]:
-        b = buckets(roy.get("conditions"))
         rows.append({
             "project_name": rec.get("project_name") or rec.get("operator") or "?",
             "operator": rec.get("operator"),
@@ -118,9 +105,15 @@ for rec in pilot:
             "holder": roy.get("holder"),
             "holder_note": None,
             "conf": None,
-            "buyback": b["buyback"], "step_down": b["step_down"],
-            "production_cap": b["production_cap"], "partial_coverage": b["partial_coverage"],
-            "features_note": roy.get("conditions"),
+            # structured features straight from Claude — no keyword mapping
+            "partial_coverage": roy.get("partial_coverage"),
+            "advance_payments": roy.get("advance_payments"),
+            "production_threshold": roy.get("production_threshold"),
+            "production_cap": roy.get("production_cap"),
+            "buyback": roy.get("buyback"),
+            "step_down": roy.get("step_down"),
+            "rofr": roy.get("rofr"),
+            "features_note": roy.get("other_terms"),
             "regime": rec.get("regime"),
             "source_docid": rec.get("docid"),
             "source_label": f"{rec.get('regime')} · {rec.get('date')}" if rec.get("date") else rec.get("regime"),
