@@ -36,6 +36,9 @@ export interface Royalty {
   sp_id: string | null;
   est_startup: string | null;
   royalty_created: string | null;
+  info_available: string | null;
+  created_at: string | null;
+  updated_at: string | null;
   // human review + score layer
   status: string;
   tier: number | null;
@@ -51,11 +54,12 @@ export interface Royalty {
 
 const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdiction as juris, commodity,
   stage, est_startup, rate, rate_pct::float8 as rate_pct, royalty_type as type, holder, holder_note,
-  royalty_available::text as avail, extract_confidence as conf, royalty_created,
+  royalty_available::text as avail, extract_confidence as conf, royalty_created, info_available,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_label, source_url, source_date::text as source_date, source_quote as quote, quote_verified,
   status::text as status, tier, rank, keep,
-  score_project_quality, score_instrument_quality, score_confidence, score_actionable, comments, link`;
+  score_project_quality, score_instrument_quality, score_confidence, score_actionable, comments, link,
+  created_at::text as created_at, updated_at::text as updated_at`;
 
 /** Primary royalties (one per asset-royalty after dedup), available-first then by rate. */
 export function getRoyalties(limit = 1500): Promise<Royalty[]> {

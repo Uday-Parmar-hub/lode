@@ -156,6 +156,18 @@ tbody tr:hover .src{color:var(--gold-hi)}
 .feat .frow{display:flex;gap:10px;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#100e0b}
 .feat .fk{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold-deep);text-transform:uppercase;letter-spacing:.06em;flex:none;width:96px}
 .feat .fv{color:var(--text-2)}
+.fnote{margin-top:9px;font-size:12.5px;color:var(--text-2);line-height:1.5}
+.fnote .fk{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold-deep);text-transform:uppercase;letter-spacing:.06em;margin-right:8px}
+/* availability tint in the detail cell */
+.avail-available{color:var(--gold-hi);font-weight:600}
+.avail-partial{color:var(--warn)}
+.avail-held,.avail-unknown{color:var(--text-3)}
+/* record meta strip (rank / dates / link) */
+.metastrip{display:flex;flex-wrap:wrap;gap:18px;margin-top:22px;padding-top:14px;border-top:1px solid var(--line);
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-2)}
+.metastrip b{color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-right:6px;font-size:9.5px}
+.metastrip a{color:var(--gold-hi);text-decoration:none}
+.metastrip a:hover{text-decoration:underline}
 /* ── master-detail split (review mode) ─────────────────── */
 .split{display:flex;align-items:stretch;height:calc(100vh - 110px)}
 .rail{width:340px;flex:none;border-right:1px solid var(--line);overflow-y:auto}
@@ -195,6 +207,12 @@ tbody tr:hover .src{color:var(--gold-hi)}
 .seg button.on{background:linear-gradient(180deg,#3a2a12,#241a0b);color:var(--gold-hi);font-weight:700;box-shadow:inset 0 0 0 1px rgba(245,178,62,.25)}
 .review textarea{width:100%;min-height:56px;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:#100e0b;color:var(--text);font-family:inherit;font-size:13px;resize:vertical;outline:none}
 .review textarea:focus{border-color:var(--gold-deep)}
+.review input.rnum{width:88px;padding:7px 10px;border-radius:9px;border:1px solid var(--line);background:#100e0b;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none}
+.rlinkrow{display:flex;align-items:center;gap:9px}
+.review input.rlink{flex:1;min-width:0;padding:9px 11px;border-radius:9px;border:1px solid var(--line);background:#100e0b;color:var(--text);font-family:inherit;font-size:13px;outline:none}
+.review input.rnum:focus,.review input.rlink:focus{border-color:var(--gold-deep)}
+.rlinkopen{flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold-hi);text-decoration:none;white-space:nowrap}
+.rlinkopen:hover{text-decoration:underline}
 .dact{display:flex;gap:9px;margin-top:20px}
 .btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:12px 18px;border-radius:11px;
   font-weight:600;font-size:13.5px;font-family:inherit;letter-spacing:.01em;cursor:pointer;border:1px solid transparent;
@@ -210,6 +228,35 @@ tbody tr:hover .src{color:var(--gold-hi)}
 .btn.danger:hover:not(:disabled){background:rgba(224,113,90,.1);border-color:#e0715a;color:#f08a74}
 .mockflag{position:fixed;bottom:14px;right:14px;z-index:20;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-3);
   border:1px solid var(--line);border-radius:8px;padding:5px 11px;background:rgba(14,12,10,.92);backdrop-filter:blur(6px)}
+
+/* ── AI natural-language search ─────────────────────────── */
+.search input{padding-right:96px}                 /* reserve room for the ✦ Ask hint */
+.search.aion input{border-color:rgba(245,178,62,.5);box-shadow:0 0 0 4px rgba(245,178,62,.08);background:#141005}
+.search.aion input:focus{border-color:rgba(245,178,62,.7);box-shadow:0 0 0 4px rgba(245,178,62,.12)}
+.search .aidot{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--gold);font-size:16px;line-height:1;
+  filter:drop-shadow(0 0 7px rgba(245,178,62,.5))}
+.search .spin{position:absolute;left:15px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;
+  border:2px solid rgba(245,178,62,.25);border-top-color:var(--gold);animation:aispin .7s linear infinite}
+@keyframes aispin{to{transform:translateY(-50%) rotate(360deg)}}
+.search .askhint{position:absolute;right:9px;top:50%;transform:translateY(-50%);cursor:pointer;user-select:none;
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--gold-hi);
+  background:linear-gradient(180deg,#2a2011,#1a140a);border:1px solid rgba(245,178,62,.3);border-radius:7px;padding:4px 9px;transition:.15s}
+.search .askhint:hover{border-color:rgba(245,178,62,.6);color:#fff}
+
+.aibar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 24px;border-bottom:1px solid var(--line);
+  background:linear-gradient(90deg,rgba(245,178,62,.1),rgba(245,178,62,0) 65%)}
+.aibar.warn{background:linear-gradient(90deg,rgba(230,180,90,.1),transparent 65%)}
+.aibar.err{background:linear-gradient(90deg,rgba(224,113,90,.12),transparent 65%)}
+.aibar .aimark{color:var(--gold);font-size:14px;filter:drop-shadow(0 0 7px rgba(245,178,62,.5));flex:none}
+.aibar.err .aimark{color:#e0715a;filter:none}
+.aibar .aitext{font-size:13px;color:var(--text);font-style:italic}
+.aibar .aichip{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--gold-hi);
+  background:rgba(245,178,62,.09);border:1px solid rgba(245,178,62,.24);border-radius:6px;padding:3px 8px;white-space:nowrap}
+.aibar .ainote{font-size:12px;color:var(--text-3)}
+.aibar .aicount{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);white-space:nowrap}
+.aibar .aiclear{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  color:var(--text-2);background:#161310;border:1px solid var(--line-2);border-radius:8px;padding:5px 11px;transition:.15s;flex:none}
+.aibar .aiclear:hover{color:#f08a74;border-color:rgba(224,113,90,.5);background:rgba(224,113,90,.08)}
 /* accessible focus ring (quality floor) */
 button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible,.chip:focus-visible,tr:focus-visible,th:focus-visible{
   outline:2px solid var(--cyan);outline-offset:1px;border-radius:6px}

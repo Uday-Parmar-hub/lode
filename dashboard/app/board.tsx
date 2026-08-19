@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Royalty, Kpis } from "@/lib/queries";
-import { saveReview, type ReviewPatch } from "./actions";
+import { saveReview, aiSearch, type ReviewPatch } from "./actions";
 
 const M: Record<string, string> = {
   Au: "#e8b45a", Ag: "#c9cfd8", Cu: "#cd7d4c", Mo: "#6e8ba6",
@@ -49,15 +49,40 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [dir, setDir] = useState(-1);
   const [view, setView] = useState<"table" | "cards">("table");
   const [selId, setSelId] = useState<string | null>(null);
+  // AI natural-language filter: null = off; a Set of ids restricts the universe to Claude's matches.
+  const [aiIds, setAiIds] = useState<Set<string> | null>(null);
+  const [aiInfo, setAiInfo] = useState<{ interpretation: string; chips: string[]; kind?: "ok" | "nofilter" | "error" } | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, v: string) => {
     const n = new Set(set); n.has(v) ? n.delete(v) : n.add(v); setter(n);
   };
 
+  const clearAi = () => { setAiIds(null); setAiInfo(null); };
+
+  const runAi = async () => {
+    const nl = q.trim();
+    if (!nl) { clearAi(); return; }
+    setAiBusy(true);
+    try {
+      const res = await aiSearch(nl);
+      if (!res.ok) { setAiIds(null); setAiInfo({ interpretation: res.error || "Search failed — try rephrasing.", chips: [], kind: "error" }); }
+      else if (res.ids === null) { setAiIds(null); setAiInfo({ interpretation: res.interpretation, chips: [], kind: "nofilter" }); }
+      else { setAiIds(new Set(res.ids)); setAiInfo({ interpretation: res.interpretation, chips: res.chips, kind: "ok" }); setSelId(null); }
+    } catch {
+      setAiIds(null); setAiInfo({ interpretation: "Search failed — try rephrasing.", chips: [], kind: "error" });
+    } finally { setAiBusy(false); }
+  };
+
   const rows = useMemo(() => {
+    const aiMode = aiIds !== null;
     const ql = q.trim().toLowerCase();
-    const words = ql.split(/[^a-z0-9.%]+/).filter((w) => w.length > 1 && !["under", "with", "and", "the", "an", "or", "in", "a"].includes(w));
+    const sig = ql.split(/[^a-z0-9.%]+/).filter((w) => w.length > 1 && !["under", "with", "and", "the", "an", "or", "in", "a"].includes(w));
+    // Live keyword pass only for short, keyword-like queries (1–2 words). In AI mode the id set already
+    // reflects the query; a longer sentence is an AI question that waits for Enter (never blanks the grid).
+    const words = aiMode || sig.length > 2 ? [] : sig;
     const out = data.filter((r) => {
+      if (aiMode && !aiIds!.has(r.id)) return false;
       if (comm.size && !(r.commodity || []).some((c) => comm.has(c))) return false;
       if (stage.size && !(r.stage && [...stage].some((s) => r.stage!.toLowerCase().includes(s.toLowerCase())))) return false;
       if (regime.size && !(r.regime && regime.has(r.regime))) return false;
@@ -70,7 +95,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
     const sv = (r: Royalty) => { const v = (r as unknown as Record<string, unknown>)[sort]; return typeof v === "number" ? v : (v ?? "").toString().toLowerCase(); };
     out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
     return out;
-  }, [data, q, comm, stage, regime, sort, dir]);
+  }, [data, q, comm, stage, regime, sort, dir, aiIds]);
 
   const selIdx = selId ? rows.findIndex((r) => r.id === selId) : -1;
   const sel = selIdx >= 0 ? rows[selIdx] : null;
@@ -103,9 +128,17 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
     <main>
       <div className="cmd">
         <div className="brand"><div className="mark" /><div><div className="word">LODE</div><div className="tag">Royalty Origination · OR Royalties</div></div></div>
-        <div className="search">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search asset, operator, holder, jurisdiction…" />
+        <div className={`search${aiBusy ? " busy" : ""}${aiIds !== null ? " aion" : ""}`}>
+          {aiBusy ? <span className="spin" aria-label="Thinking" />
+            : aiIds !== null ? <span className="aidot">✦</span>
+            : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>}
+          <input
+            value={q}
+            onChange={(e) => { setQ(e.target.value); if (aiIds !== null) clearAi(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runAi(); } else if (e.key === "Escape" && aiIds !== null) clearAi(); }}
+            placeholder="Ask in plain English — “producing gold in Nevada, available NSR under 2%”"
+          />
+          {q.trim() && !aiBusy && aiIds === null && <kbd className="askhint" onClick={runAi} title="Ask AI (Enter)">✦ Ask&nbsp;↵</kbd>}
         </div>
         <div className="kstats">
           <div className="kstat"><div className="n au">{kpis.royalties.toLocaleString()}</div><div className="l">Royalties</div></div>
@@ -115,6 +148,18 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         </div>
         <div className="live"><span className="d" />LIVE</div>
       </div>
+
+      {aiInfo && (
+        <div className={`aibar${aiInfo.kind === "error" ? " err" : ""}${aiInfo.kind === "nofilter" ? " warn" : ""}`}>
+          <span className="aimark">✦</span>
+          <span className="aitext">{aiInfo.interpretation}</span>
+          {aiInfo.chips.map((c, i) => <span key={i} className="aichip">{c}</span>)}
+          {aiInfo.kind === "nofilter" && <span className="ainote">— showing keyword matches instead</span>}
+          <span style={{ flex: 1 }} />
+          {aiInfo.kind === "ok" && <span className="aicount">{rows.length} match{rows.length === 1 ? "" : "es"}</span>}
+          <button className="aiclear" onClick={clearAi} title="Clear AI search (Esc)"><span aria-hidden>✕</span> Clear</button>
+        </div>
+      )}
 
       <div className="toolbar">
         <span className="glabel">Metal</span>
@@ -206,8 +251,15 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
   const cur = <K extends keyof ReviewPatch>(k: K): ReviewPatch[K] =>
     (draft[k] !== undefined ? draft[k] : (r as unknown as Record<string, unknown>)[k]) as ReviewPatch[K];
 
+  // Send the *effective* value of every editable field (draft ?? current), so saving one field
+  // (or just clicking Validate) never nulls out the others the analyst set earlier.
+  const EDITABLE: (keyof ReviewPatch)[] = [
+    "tier", "keep", "score_project_quality", "score_instrument_quality",
+    "score_confidence", "score_actionable", "comments", "rank", "link",
+  ];
   const persist = async (extra: ReviewPatch) => {
-    const patch = { ...draft, ...extra };
+    const patch: ReviewPatch = { ...extra };
+    for (const k of EDITABLE) if (!(k in patch)) (patch as Record<string, unknown>)[k] = cur(k);
     setSaving(extra.status ?? "save");
     const res = await saveReview(r.id, patch);
     setSaving(null);
@@ -236,6 +288,8 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       <div className="dgrid">
         <Cell k="Rate" v={`${r.rate ?? "—"} ${r.type ?? ""}`} gold />
         <Cell k="Held by" v={<>{r.holder ?? "—"}{r.holder_note && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.holder_note}</div>}</>} />
+        <Cell k="Royalty available" v={<span className={`avail-${r.avail}`}>{cap(r.avail)}</span>} />
+        <Cell k="Confidence" v={r.conf != null ? `${r.conf} / 5` : "—"} />
         <Cell k="Commodity" v={(r.commodity || []).join(" · ")} />
         <Cell k="Regime" v={r.regime} />
       </div>
@@ -246,6 +300,7 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
         <Cell k="Stage / est. start" v={[r.stage, r.est_startup].filter(Boolean).join(" · ")} />
         <Cell k="S&P ID" v={r.sp_id} />
         <Cell k="Royalty granted" v={r.royalty_created} />
+        <Cell k="Info available" v={r.info_available} />
       </div>
 
       <div className="sec">Verbatim from the technical report</div>
@@ -258,6 +313,7 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       {feats.length ? (
         <div className="feat">{feats.map((f, i) => <div key={i} className="frow"><span className="fk">{f.k}</span><span className="fv">{f.v}</span></div>)}</div>
       ) : <div style={{ color: "var(--text-3)", fontSize: 13 }}>None disclosed — a straightforward royalty.</div>}
+      {r.features_note && <div className="fnote"><span className="fk">also check</span> {r.features_note}</div>}
 
       <div className="sec">Review · analyst</div>
       <div className="review">
@@ -267,12 +323,21 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
         <div className="rfield"><span className="rk">Keep?</span>
           <div className="seg"><button className={cur("keep") === true ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, keep: true }))}>Yes</button><button className={cur("keep") === false ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, keep: false }))}>No</button></div>
         </div>
+        <div className="rfield"><span className="rk">Rank</span>
+          <input className="rnum" type="number" placeholder="—" defaultValue={r.rank ?? ""}
+            onChange={(e) => setDraft((d) => ({ ...d, rank: e.target.value === "" ? null : Number(e.target.value) }))} />
+        </div>
         {SCORES.map(([k, label]) => (
           <div className="rfield" key={k as string}><span className="rk">{label}</span>
             <div className="seg">{[1, 2, 3, 4, 5].map((n) => <button key={n} className={cur(k) === n ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, [k]: d[k] === n ? null : n }))}>{n}</button>)}</div>
           </div>
         ))}
         <textarea placeholder="Comments — grounds the decision…" defaultValue={r.comments ?? ""} onChange={(e) => setDraft((d) => ({ ...d, comments: e.target.value }))} />
+        <div className="rlinkrow">
+          <input className="rlink" type="url" placeholder="Link (URL) — SEDAR+ / internal doc…" defaultValue={r.link ?? ""}
+            onChange={(e) => setDraft((d) => ({ ...d, link: e.target.value.trim() || null }))} />
+          {cur("link") && <a className="rlinkopen" href={cur("link") as string} target="_blank" rel="noreferrer">open ↗</a>}
+        </div>
       </div>
       <div className="dact">
         <button className="btn primary" disabled={!!saving} onClick={() => persist({ status: "validated" })}>
@@ -280,6 +345,11 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
         </button>
         <button className="btn danger" disabled={!!saving} onClick={() => persist({ status: "rejected" })}>Reject</button>
         <button className="btn ghost" disabled={!!saving} onClick={() => persist({})}>{saving === "save" ? "Saving…" : "Save"}</button>
+      </div>
+
+      <div className="metastrip">
+        <span><b>Entered</b> {r.created_at ? r.created_at.slice(0, 10) : "—"}</span>
+        <span><b>Modified</b> {r.updated_at ? r.updated_at.slice(0, 10) : "—"}</span>
       </div>
     </div>
   );
