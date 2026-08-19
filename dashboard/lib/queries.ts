@@ -39,6 +39,10 @@ export interface Royalty {
   info_available: string | null;
   created_at: string | null;
   updated_at: string | null;
+  // dedup provenance (how many source reports corroborate this royalty)
+  report_count: number;
+  report_from: number | null;
+  report_to: number | null;
   // human review + score layer
   status: string;
   tier: number | null;
@@ -59,7 +63,10 @@ const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdicti
   regime, source_label, source_url, source_date::text as source_date, source_quote as quote, quote_verified,
   status::text as status, tier, rank, keep,
   score_project_quality, score_instrument_quality, score_confidence, score_actionable, comments, link,
-  created_at::text as created_at, updated_at::text as updated_at`;
+  created_at::text as created_at, updated_at::text as updated_at,
+  (select count(*) from royalties d where d.dup_key = royalties.dup_key)::int as report_count,
+  (select extract(year from min(source_date))::int from royalties d where d.dup_key = royalties.dup_key) as report_from,
+  (select extract(year from max(source_date))::int from royalties d where d.dup_key = royalties.dup_key) as report_to`;
 
 /** Primary royalties (one per asset-royalty after dedup), available-first then by rate. */
 export function getRoyalties(limit = 1500): Promise<Royalty[]> {

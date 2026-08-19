@@ -214,7 +214,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
                   <td className="type">{r.type}</td>
                   <td className="holder"><div className="h">{r.holder ?? "—"}</div>{r.holder_note && <div className="hn">{r.holder_note}</div>}</td>
                   <td><div className="fchips">{feats.slice(0, 3).map((f, i) => <span key={i} className="fchip">{f.k}</span>)}{!feats.length && <span style={{ color: "var(--text-3)" }}>—</span>}</div></td>
-                  <td className="src">{r.source_label} {r.quote_verified && <span className="verified">✓</span>}</td>
+                  <td className="src">{r.source_label} {r.quote_verified && <span className="verified">✓</span>}{r.report_count > 1 && <span className="repbadge" title={`Corroborated by ${r.report_count} source reports`}>×{r.report_count}</span>}</td>
                 </tr>); })}
             </tbody>
           </table>
@@ -306,7 +306,7 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       <div className="sec">Verbatim from the technical report</div>
       <div className="assay">
         <div className="q">“{r.quote}”</div>
-        <div className="cite">{r.source_label} &nbsp;·&nbsp; {r.quote_verified ? <span className="verified">✓ source-verified</span> : <span>unverified</span>}{r.source_url && (<> &nbsp;·&nbsp; <a href={r.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--gold-hi)" }}>open ↗</a></>)}</div>
+        <div className="cite">{r.source_label} &nbsp;·&nbsp; {r.quote_verified ? <span className="verified">✓ source-verified</span> : <span>unverified</span>}{r.source_url && (<> &nbsp;·&nbsp; <a href={r.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--gold-hi)" }}>open ↗</a></>)}{r.report_count > 1 && (<> &nbsp;·&nbsp; <span className="repcount">corroborated by {r.report_count} reports{r.report_from && r.report_to ? ` (${r.report_from === r.report_to ? r.report_from : `${r.report_from}–${r.report_to}`})` : ""}</span></>)}</div>
       </div>
 
       <div className="sec">Royalty features</div>

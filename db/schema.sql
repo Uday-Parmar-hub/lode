@@ -80,6 +80,7 @@ CREATE TABLE royalties (
 
     -- ── Bookkeeping ───────────────────────────────────────────────────────
     is_primary              BOOLEAN NOT NULL DEFAULT TRUE,  -- best/newest row per asset-royalty (grid default)
+    dup_key                 TEXT,                           -- canonical dedup key (normed asset|type|rate|holder); set by scripts/dedupe.py
     ingested_from           TEXT NOT NULL DEFAULT 'pilot',  -- pilot | universe | marketwatch
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),   -- "Date Entered"
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),    -- "Date Modified"
@@ -95,6 +96,7 @@ CREATE INDEX idx_roy_rate         ON royalties (rate_pct);
 CREATE INDEX idx_roy_stage        ON royalties (stage);
 CREATE INDEX idx_roy_commodity    ON royalties USING GIN (commodity);
 CREATE INDEX idx_roy_primary      ON royalties (is_primary) WHERE is_primary;
+CREATE INDEX idx_roy_dupkey       ON royalties (dup_key);
 CREATE INDEX idx_roy_project_trgm ON royalties USING GIN (project_name gin_trgm_ops);
 CREATE INDEX idx_roy_holder_trgm  ON royalties USING GIN (holder gin_trgm_ops);
 

@@ -101,6 +101,9 @@ td.rate{text-align:left}
 .conf i.f{background:var(--cyan);box-shadow:0 0 5px rgba(87,224,207,.35)}
 .src{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-3)}
 tbody tr:hover .src{color:var(--gold-hi)}
+.repbadge{display:inline-block;margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;
+  color:var(--cyan);background:rgba(87,224,207,.09);border:1px solid rgba(87,224,207,.25);border-radius:5px;padding:1px 5px;vertical-align:1px}
+.repcount{color:var(--cyan)}
 
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;padding:18px 24px 60px}
 .card{position:relative;display:flex;flex-direction:column;min-height:188px;border:1px solid var(--line);border-radius:15px;
