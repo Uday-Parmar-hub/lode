@@ -6,424 +6,348 @@
 <title>LODE — Royalty Origination Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root{
-    --bg:#0a0908; --bg-2:#0e0d0b; --panel:#141210cc; --panel-solid:#141210; --panel-2:#1c1814;
-    --line:#2a251f; --line-2:#3b332a;
+    --bg:#0a0908; --panel:#141210; --panel-2:#1b1712; --bar:#0e0c0a;
+    --line:#241f19; --line-2:#332c23;
     --text:#efe9dd; --text-2:#a79f90; --text-3:#736b5e;
     --gold:#f5b23e; --gold-hi:#ffd884; --gold-deep:#c8862a;
-    --cyan:#57e0cf;
-    --ok:#8fd39a; --warn:#e6b45a; --dim:#5f584c;
+    --cyan:#57e0cf; --ok:#8fd39a; --warn:#e6b45a; --dim:#5f584c;
     --m-Au:#e8b45a; --m-Ag:#c9cfd8; --m-Cu:#cd7d4c; --m-Mo:#6e8ba6;
-    --m-Ni:#8fb3a0; --m-Zn:#9aa3b2; --m-PGE:#b39cd0; --m-Ag2:#c9cfd8;
-    --radius:15px;
-    --maxw:1200px;
+    --m-Ni:#8fb3a0; --m-Zn:#9aa3b2; --m-PGE:#b39cd0;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth}
-  body{
-    font-family:'Manrope',system-ui,sans-serif;
-    background:var(--bg); color:var(--text);
-    -webkit-font-smoothing:antialiased; line-height:1.5;
-    min-height:100vh; overflow-x:hidden;
-  }
-  /* ambient: molten light bleeding from above, a cool undertone below, a faint grain film */
+  body{font-family:'Manrope',system-ui,sans-serif;background:var(--bg);color:var(--text);
+    -webkit-font-smoothing:antialiased;font-size:14px;min-height:100vh}
   .glow{position:fixed;inset:0;z-index:-2;pointer-events:none}
-  .glow::before{content:"";position:absolute;top:-30%;left:50%;transform:translateX(-50%);
-    width:120vw;height:70vh;border-radius:50%;
-    background:radial-gradient(closest-side, rgba(245,178,62,.16), rgba(245,178,62,.05) 45%, transparent 72%);
-    filter:blur(20px)}
-  .glow::after{content:"";position:absolute;bottom:-25%;right:-10%;
-    width:70vw;height:60vh;border-radius:50%;
-    background:radial-gradient(closest-side, rgba(87,224,207,.07), transparent 70%);filter:blur(30px)}
+  .glow::before{content:"";position:absolute;top:-40%;left:50%;transform:translateX(-50%);
+    width:120vw;height:60vh;border-radius:50%;
+    background:radial-gradient(closest-side,rgba(245,178,62,.12),transparent 70%);filter:blur(22px)}
   .grain{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.5;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E")}
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E")}
 
-  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
-
-  /* ── masthead ─────────────────────────────────────────── */
-  header{padding:34px 0 0}
-  .top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
-  .brand{display:flex;align-items:center;gap:14px}
-  .mark{width:34px;height:34px;border-radius:9px;position:relative;flex:none;
+  /* ── command bar (compact, sticky) ─────────────────────── */
+  .cmd{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:20px;
+    padding:14px 24px;background:rgba(12,10,8,.82);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:11px;flex:none}
+  .mark{width:30px;height:30px;border-radius:8px;position:relative;
     background:linear-gradient(150deg,#2a2117,#0f0c09);border:1px solid #4a3a20;
-    box-shadow:0 0 22px rgba(245,178,62,.22), inset 0 1px 0 rgba(255,220,132,.25)}
-  .mark::before{content:"";position:absolute;left:50%;top:14%;bottom:14%;width:2.5px;transform:translateX(-50%) rotate(14deg);
-    border-radius:2px;background:linear-gradient(var(--gold-hi),var(--gold),var(--gold-deep));
-    box-shadow:0 0 10px var(--gold)}
-  .word{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:27px;letter-spacing:.22em;
+    box-shadow:0 0 18px rgba(245,178,62,.22),inset 0 1px 0 rgba(255,220,132,.25)}
+  .mark::before{content:"";position:absolute;left:50%;top:14%;bottom:14%;width:2.5px;
+    transform:translateX(-50%) rotate(14deg);border-radius:2px;
+    background:linear-gradient(var(--gold-hi),var(--gold),var(--gold-deep));box-shadow:0 0 9px var(--gold)}
+  .word{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;letter-spacing:.2em;
     background:linear-gradient(180deg,#fff6e6,#e9c583 60%,#c99236);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .sub{font-size:12.5px;color:var(--text-2);letter-spacing:.02em;margin-top:3px}
-  .sub b{color:var(--text);font-weight:600}
-  .meta{display:flex;align-items:center;gap:16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-3);padding-top:6px}
-  .live{display:flex;align-items:center;gap:7px;color:var(--cyan)}
-  .live .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 0 rgba(87,224,207,.6);animation:pulse 2.4s infinite}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(87,224,207,.55)}70%{box-shadow:0 0 0 7px rgba(87,224,207,0)}100%{box-shadow:0 0 0 0 rgba(87,224,207,0)}}
+  .tag{font-size:10.5px;color:var(--text-3);letter-spacing:.02em;margin-top:1px;white-space:nowrap}
 
-  /* the ore-vein seam — signature motif, drawn on load */
-  .seam{display:block;width:100%;height:12px;margin:22px 0 6px}
-  .seam path{stroke:url(#veinGrad);stroke-width:1.7;fill:none;stroke-linecap:round;
-    stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.5s .2s cubic-bezier(.6,0,.2,1) forwards}
-  @keyframes draw{to{stroke-dashoffset:0}}
+  .search{flex:1;position:relative;max-width:640px}
+  .search svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--gold)}
+  .search input{width:100%;padding:11px 14px 11px 42px;font-size:14px;font-family:'Manrope',sans-serif;
+    color:var(--text);background:#100e0b;border:1px solid var(--line-2);border-radius:11px;outline:none;transition:.22s}
+  .search input::placeholder{color:#6c6456}
+  .search input:focus{border-color:rgba(87,224,207,.5);box-shadow:0 0 0 4px rgba(87,224,207,.08)}
+  .search .kbd{position:absolute;right:11px;top:50%;transform:translateY(-50%);font-family:'JetBrains Mono',monospace;
+    font-size:10px;color:var(--text-3);border:1px solid var(--line);border-radius:5px;padding:2px 6px}
+  .kstats{display:flex;align-items:center;gap:16px;flex:none;font-family:'JetBrains Mono',monospace}
+  .kstat{text-align:right}
+  .kstat .n{font-size:15px;font-weight:600;color:var(--text);line-height:1}
+  .kstat .n.au{color:var(--gold)}
+  .kstat .l{font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
+  .live{display:flex;align-items:center;gap:6px;color:var(--cyan);font-family:'JetBrains Mono',monospace;font-size:10px;flex:none}
+  .live .d{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 0 rgba(87,224,207,.6);animation:pulse 2.4s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 6px rgba(87,224,207,0)}100%{box-shadow:0 0 0 0 rgba(87,224,207,0)}}
 
-  /* ── hero AI search ───────────────────────────────────── */
-  .hero{margin:40px 0 30px}
-  .hero h1{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:clamp(26px,4vw,40px);
-    letter-spacing:-.015em;line-height:1.08;max-width:16ch}
-  .hero h1 em{font-style:normal;color:var(--gold);text-shadow:0 0 26px rgba(245,178,62,.35)}
-  .hero p{color:var(--text-2);margin-top:12px;max-width:52ch;font-size:15px}
-  .searchbox{margin-top:26px;position:relative;max-width:760px}
-  .searchbox svg.ic{position:absolute;left:20px;top:50%;transform:translateY(-50%);color:var(--gold)}
-  .searchbox input{width:100%;padding:20px 20px 20px 54px;font-size:16px;font-family:'Manrope',sans-serif;
-    color:var(--text);background:linear-gradient(180deg,#161310,#100e0b);
-    border:1px solid var(--line-2);border-radius:16px;outline:none;transition:.25s;
-    box-shadow:0 20px 50px -22px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.02)}
-  .searchbox input::placeholder{color:#6c6456}
-  .searchbox input:focus{border-color:rgba(87,224,207,.55);
-    box-shadow:0 0 0 4px rgba(87,224,207,.09), 0 24px 60px -22px rgba(87,224,207,.18)}
-  .kbd{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-family:'JetBrains Mono',monospace;
-    font-size:11px;color:var(--text-3);border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:#0d0b09}
-  .examples{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-  .ex{font-size:12.5px;color:var(--text-2);border:1px solid var(--line);border-radius:999px;
-    padding:6px 13px;cursor:pointer;transition:.18s;background:#0f0d0b}
-  .ex:hover{border-color:var(--gold-deep);color:var(--gold-hi);background:#141009}
-  .ex::before{content:"⌕  ";color:var(--gold-deep)}
-
-  /* ── stat strip ───────────────────────────────────────── */
-  .stats{display:flex;flex-wrap:wrap;align-items:center;gap:0 26px;margin:6px 0 26px;
-    padding:16px 20px;border:1px solid var(--line);border-radius:13px;
-    background:linear-gradient(180deg,#100e0b,#0c0a08)}
-  .stat{display:flex;align-items:baseline;gap:9px}
-  .stat .n{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:20px;color:var(--text);letter-spacing:-.02em}
-  .stat .n.au{color:var(--gold);text-shadow:0 0 18px rgba(245,178,62,.3)}
-  .stat .l{font-size:11.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.09em}
-  .stats .div{width:1px;height:26px;background:linear-gradient(var(--line),transparent);margin:0 2px}
-
-  /* ── toolbar / filters ────────────────────────────────── */
-  .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-bottom:16px}
-  .grp{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
-  .glabel{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-3);
-    text-transform:uppercase;letter-spacing:.12em;margin-right:2px}
-  .chip{font-size:12.5px;font-weight:500;color:var(--text-2);border:1px solid var(--line);
-    border-radius:999px;padding:6px 13px;cursor:pointer;transition:.16s;background:#100e0b;user-select:none;
-    display:inline-flex;align-items:center;gap:7px}
-  .chip .swatch{width:8px;height:8px;border-radius:2px;background:var(--c,var(--text-3))}
+  /* ── toolbar (filters) ─────────────────────────────────── */
+  .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--line)}
+  .glabel{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.11em;margin:0 2px}
+  .chip{font-size:12px;font-weight:500;color:var(--text-2);border:1px solid var(--line);border-radius:999px;
+    padding:5px 11px;cursor:pointer;transition:.15s;background:#100e0b;display:inline-flex;align-items:center;gap:6px;user-select:none}
+  .chip .sw{width:7px;height:7px;border-radius:2px;background:var(--c,var(--text-3))}
   .chip:hover{color:var(--text);border-color:var(--line-2)}
   .chip.on{color:#12100c;background:var(--c,var(--gold));border-color:transparent;font-weight:600}
-  .chip.on .swatch{background:#12100c;opacity:.55}
-  .count{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-3)}
+  .chip.on .sw{background:#12100c;opacity:.5}
+  .rt{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .toggle{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .toggle button{padding:6px 12px;font-size:12px;font-weight:600;color:var(--text-3);background:#100e0b;border:0;cursor:pointer;transition:.15s;font-family:inherit}
+  .toggle button.on{color:var(--gold-hi);background:#1a140a}
+  .count{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-3);white-space:nowrap}
   .count b{color:var(--gold)}
+  .ex{font-size:11.5px;color:var(--text-2);border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer;background:#0f0d0b}
+  .ex:hover{border-color:var(--gold-deep);color:var(--gold-hi)}
+  .ex::before{content:"⌕ ";color:var(--gold-deep)}
 
-  /* ── rows ─────────────────────────────────────────────── */
-  .grid{display:flex;flex-direction:column;gap:10px;padding-bottom:60px}
-  .row{position:relative;display:grid;
-    grid-template-columns:2fr 1.05fr 0.95fr 1.35fr 0.95fr auto;
-    align-items:center;gap:18px;padding:16px 20px 16px 22px;
-    border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;
-    background:linear-gradient(180deg,#131110,#0d0b09);transition:.2s;
-    opacity:0;transform:translateY(10px);animation:rise .5s forwards}
-  @keyframes rise{to{opacity:1;transform:none}}
-  .row::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;
-    background:linear-gradient(var(--vein,var(--gold)),transparent);box-shadow:0 0 12px -2px var(--vein,var(--gold));opacity:.85;transition:.2s}
-  .row:hover{border-color:var(--line-2);transform:translateY(-2px);
-    background:linear-gradient(180deg,#171412,#0f0d0a);box-shadow:0 18px 44px -26px rgba(0,0,0,.9)}
-  .row:hover::before{top:6px;bottom:6px;opacity:1;width:3.5px}
-
-  .asset .name{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16.5px;letter-spacing:-.01em}
-  .asset .op{font-size:12.5px;color:var(--text-2);margin-top:2px}
-  .asset .op .fl{margin-right:6px;color:var(--gold-deep);font-size:10px}
-  .core{display:flex;flex-direction:column;gap:6px}
-  .corebar{display:flex;height:8px;border-radius:3px;overflow:hidden;border:1px solid #26211b}
-  .corebar span{height:100%}
-  .corelbl{display:flex;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-3);letter-spacing:.04em}
-  .corelbl i{font-style:normal}
-
-  .rate{text-align:left}
-  .rate .v{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:21px;color:var(--gold);
-    letter-spacing:-.02em;text-shadow:0 0 20px rgba(245,178,62,.32);line-height:1}
-  .rate .t{font-size:11px;color:var(--text-2);font-family:'JetBrains Mono',monospace;margin-top:5px;letter-spacing:.05em}
-  .rate .cond{font-size:10.5px;color:var(--gold-deep);margin-top:3px}
-
-  .holder .h{font-size:14px;font-weight:500}
-  .holder .hn{font-size:11.5px;color:var(--text-3);margin-top:2px}
-  .holder .lab{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.1em}
-
-  .avail{display:flex;flex-direction:column;gap:7px;align-items:flex-start}
-  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
-    padding:5px 11px;border-radius:999px;border:1px solid;letter-spacing:.01em}
-  .pill .d{width:7px;height:7px;border-radius:50%}
+  /* ── the data grid ─────────────────────────────────────── */
+  /* NB: no overflow here — overflow-x:auto would coerce overflow-y to auto (CSS spec), making this a
+     scroll container and breaking the sticky <thead>. Table fits at desk widths; body scrolls if narrower. */
+  .tablewrap{padding:0 24px 60px}
+  table{width:100%;min-width:1180px;border-collapse:collapse}
+  thead th{position:sticky;top:57px;z-index:10;background:#0d0b09;text-align:left;
+    font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--text-3);
+    text-transform:uppercase;letter-spacing:.08em;padding:11px 14px;border-bottom:1px solid var(--line-2);
+    cursor:pointer;white-space:nowrap;user-select:none;transition:.15s}
+  thead th:hover{color:var(--text-2)}
+  thead th .ar{color:var(--gold);margin-left:4px;opacity:0}
+  thead th.sorted{color:var(--gold-hi)}
+  thead th.sorted .ar{opacity:1}
+  thead th.num{text-align:right}
+  tbody tr{border-bottom:1px solid var(--line);cursor:pointer;transition:background .13s}
+  tbody tr:hover{background:linear-gradient(90deg,rgba(245,178,62,.05),rgba(245,178,62,0) 60%)}
+  td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
+  td.asset{position:relative}
+  td.asset .vein{position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;
+    background:var(--vein);box-shadow:0 0 9px -1px var(--vein);opacity:.9}
+  td.asset .nm{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14.5px;padding-left:8px}
+  .op,.juris{color:var(--text-2);font-size:13px}
+  .comm{display:flex;gap:4px}
+  .comm span{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;padding:2px 6px;border-radius:5px;
+    background:var(--cc,#222);color:#12100c}
+  .stage{font-size:11.5px;color:var(--text-2);border:1px solid var(--line-2);border-radius:6px;padding:2px 8px}
+  td.rate{text-align:right}
+  .rate .v{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;color:var(--gold);
+    text-shadow:0 0 14px rgba(245,178,62,.28)}
+  .rate .c{font-size:9.5px;color:var(--gold-deep);margin-top:1px}
+  .type{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2)}
+  .holder .h{font-size:13px;font-weight:500}
+  .holder .hn{font-size:11px;color:var(--text-3);margin-top:1px}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid}
+  .pill .d{width:6px;height:6px;border-radius:50%}
   .pill.available{color:var(--gold-hi);border-color:rgba(245,178,62,.4);background:rgba(245,178,62,.08)}
-  .pill.available .d{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+  .pill.available .d{background:var(--gold);box-shadow:0 0 7px var(--gold)}
   .pill.partial{color:var(--warn);border-color:rgba(230,180,90,.3);background:rgba(230,180,90,.06)}
   .pill.partial .d{background:var(--warn)}
   .pill.held{color:var(--text-3);border-color:var(--line);background:transparent}
   .pill.held .d{background:var(--dim)}
-  .conf{display:flex;align-items:center;gap:7px}
-  .conf .bars{display:flex;gap:2px}
-  .conf .bars i{width:4px;height:12px;border-radius:1px;background:#2a251d}
-  .conf .bars i.f{background:var(--cyan);box-shadow:0 0 6px rgba(87,224,207,.4)}
-  .conf small{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-3)}
+  .conf{display:flex;gap:2px}
+  .conf i{width:4px;height:11px;border-radius:1px;background:#2a251d}
+  .conf i.f{background:var(--cyan);box-shadow:0 0 5px rgba(87,224,207,.35)}
+  .src{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-3)}
+  tbody tr:hover .src{color:var(--gold-hi)}
 
-  .go{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-3);
-    border:1px solid var(--line);border-radius:9px;padding:9px 11px;transition:.18s;white-space:nowrap}
-  .row:hover .go{color:var(--gold-hi);border-color:var(--gold-deep)}
+  /* ── cards view (kept) ─────────────────────────────────── */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;padding:16px 24px 60px}
+  .card{position:relative;border:1px solid var(--line);border-radius:14px;padding:16px 16px 16px 19px;
+    background:linear-gradient(180deg,#131110,#0d0b09);cursor:pointer;transition:.2s}
+  .card::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--vein);box-shadow:0 0 10px -1px var(--vein)}
+  .card:hover{border-color:var(--line-2);transform:translateY(-2px);box-shadow:0 16px 40px -26px #000}
+  .card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .card .nm{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px}
+  .card .op{font-size:12px;color:var(--text-2);margin-top:2px}
+  .card .rr{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:19px;color:var(--gold);text-shadow:0 0 16px rgba(245,178,62,.3);text-align:right}
+  .card .rt2{font-size:10px;color:var(--text-2);font-family:'JetBrains Mono',monospace;text-align:right}
+  .card .mid{display:flex;gap:5px;margin:12px 0}
+  .card .foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
+  .card .hh{font-size:12px;color:var(--text-2)}
+  .card .hh b{color:var(--text);font-weight:600}
 
-  /* ── drawer (source drill-down) ───────────────────────── */
-  .backdrop{position:fixed;inset:0;background:rgba(5,4,3,.6);backdrop-filter:blur(3px);
-    opacity:0;pointer-events:none;transition:.3s;z-index:40}
+  /* ── drawer ────────────────────────────────────────────── */
+  .backdrop{position:fixed;inset:0;background:rgba(5,4,3,.6);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:.3s;z-index:40}
   .backdrop.open{opacity:1;pointer-events:auto}
-  .drawer{position:fixed;top:0;right:0;height:100%;width:min(480px,94vw);z-index:50;
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(470px,94vw);z-index:50;
     background:linear-gradient(180deg,#141210,#0c0a08);border-left:1px solid var(--line-2);
-    transform:translateX(102%);transition:transform .38s cubic-bezier(.5,0,.15,1);
-    box-shadow:-30px 0 80px -30px rgba(0,0,0,.9);overflow-y:auto}
+    transform:translateX(102%);transition:transform .36s cubic-bezier(.5,0,.15,1);box-shadow:-30px 0 80px -30px #000;overflow-y:auto}
   .drawer.open{transform:none}
-  .dpad{padding:26px 26px 60px}
-  .dclose{position:absolute;top:20px;right:20px;width:34px;height:34px;border-radius:9px;
-    border:1px solid var(--line);background:#0e0c0a;color:var(--text-2);cursor:pointer;font-size:16px;transition:.18s}
-  .dclose:hover{color:var(--text);border-color:var(--line-2)}
-  .deye{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--gold-deep);text-transform:uppercase;letter-spacing:.14em}
-  .dtitle{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:26px;margin-top:8px;letter-spacing:-.015em}
-  .dmeta{color:var(--text-2);font-size:13px;margin-top:5px}
-  .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}
-  .cell{border:1px solid var(--line);border-radius:11px;padding:13px 14px;background:#100e0b}
-  .cell .k{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.11em}
-  .cell .v{font-size:15px;margin-top:5px;font-weight:500}
+  .dpad{padding:24px 24px 60px}
+  .dclose{position:absolute;top:18px;right:18px;width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#0e0c0a;color:var(--text-2);cursor:pointer}
+  .dclose:hover{color:var(--text)}
+  .deye{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold-deep);text-transform:uppercase;letter-spacing:.13em}
+  .dtitle{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:24px;margin-top:7px}
+  .dmeta{color:var(--text-2);font-size:13px;margin-top:4px}
+  .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0}
+  .cell{border:1px solid var(--line);border-radius:10px;padding:12px;background:#100e0b}
+  .cell .k{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.1em}
+  .cell .v{font-size:14px;margin-top:4px;font-weight:500}
   .cell .v.au{font-family:'JetBrains Mono',monospace;color:var(--gold);font-weight:600}
-  .sec{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-3);
-    text-transform:uppercase;letter-spacing:.12em;margin:26px 0 11px;display:flex;align-items:center;gap:10px}
+  .sec{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.11em;margin:22px 0 10px;display:flex;align-items:center;gap:10px}
   .sec::after{content:"";flex:1;height:1px;background:var(--line)}
-  /* the assay block — verbatim source, styled like a core-sample readout */
-  .assay{border:1px solid var(--line-2);border-left:3px solid var(--gold);border-radius:12px;
-    padding:16px 18px;background:linear-gradient(180deg,#161207,#100d08);position:relative}
-  .assay .q{font-size:14.5px;line-height:1.62;color:#e7ddc9}
+  .assay{border:1px solid var(--line-2);border-left:3px solid var(--gold);border-radius:11px;padding:15px;background:linear-gradient(180deg,#161207,#100d08)}
+  .assay .q{font-size:14px;line-height:1.6;color:#e7ddc9}
   .assay .q b{color:var(--gold-hi);font-weight:600;background:rgba(245,178,62,.1);padding:0 3px;border-radius:3px}
-  .assay .cite{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-3);margin-top:12px;
-    display:flex;align-items:center;gap:8px}
-  .verified{display:inline-flex;align-items:center;gap:5px;color:var(--ok);font-weight:600}
-  .dact{display:flex;gap:10px;margin-top:22px}
-  .btn{flex:1;text-align:center;padding:13px;border-radius:11px;font-weight:600;font-size:13.5px;cursor:pointer;transition:.18s;border:1px solid}
-  .btn.primary{background:linear-gradient(180deg,var(--gold-hi),var(--gold));color:#1a1305;border-color:var(--gold-deep);
-    box-shadow:0 14px 30px -14px rgba(245,178,62,.5)}
+  .assay .cite{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-3);margin-top:11px}
+  .verified{color:var(--ok);font-weight:600}
+  .dact{display:flex;gap:9px;margin-top:20px}
+  .btn{flex:1;text-align:center;padding:12px;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;border:1px solid;transition:.15s}
+  .btn.primary{background:linear-gradient(180deg,var(--gold-hi),var(--gold));color:#1a1305;border-color:var(--gold-deep);box-shadow:0 12px 26px -14px rgba(245,178,62,.5)}
   .btn.primary:hover{filter:brightness(1.06)}
   .btn.ghost{background:transparent;color:var(--text-2);border-color:var(--line-2)}
-  .btn.ghost:hover{color:var(--text);border-color:var(--text-3)}
-  .rlist{display:flex;flex-direction:column;gap:9px}
-  .ritem{display:flex;justify-content:space-between;align-items:center;gap:12px;
-    border:1px solid var(--line);border-radius:10px;padding:11px 13px;background:#100e0b}
-  .ritem .rr{font-family:'JetBrains Mono',monospace;color:var(--gold);font-weight:600;font-size:15px}
-  .ritem .rh{font-size:12.5px;color:var(--text-2);text-align:right}
-
-  footer{border-top:1px solid var(--line);margin-top:20px;padding:22px 0 50px;color:var(--text-3);font-size:12px;
-    display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
-  footer .mock{font-family:'JetBrains Mono',monospace;color:var(--warn);border:1px solid rgba(230,180,90,.28);
-    border-radius:7px;padding:4px 10px;background:rgba(230,180,90,.05)}
-
-  @media(max-width:860px){
-    .row{grid-template-columns:1fr 1fr;grid-auto-rows:auto;gap:14px}
-    .row .core,.row .go{display:none}
-    .stat .l{display:none}
-  }
-  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}
-    .seam path{stroke-dashoffset:0}.row{opacity:1;transform:none}}
+  .btn.ghost:hover{color:var(--text)}
+  .mockflag{position:fixed;bottom:14px;left:14px;z-index:20;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--warn);
+    border:1px solid rgba(230,180,90,.28);border-radius:6px;padding:4px 9px;background:rgba(230,180,90,.05)}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <div class="glow"></div><div class="grain"></div>
-<svg width="0" height="0"><defs>
-  <linearGradient id="veinGrad" x1="0" x2="1">
-    <stop offset="0" stop-color="#c8862a" stop-opacity="0"/><stop offset=".2" stop-color="#f5b23e"/>
-    <stop offset=".5" stop-color="#ffd884"/><stop offset=".8" stop-color="#f5b23e"/>
-    <stop offset="1" stop-color="#c8862a" stop-opacity="0"/>
-  </linearGradient>
-</defs></svg>
 
-<div class="wrap">
-  <header>
-    <div class="top">
-      <div class="brand">
-        <div class="mark"></div>
-        <div>
-          <div class="word">LODE</div>
-          <div class="sub">Royalty Origination Intelligence · <b>OR Royalties</b></div>
-        </div>
-      </div>
-      <div class="meta">
-        <span class="live"><span class="dot"></span>LIVE</span>
-        <span>SEDAR · EDGAR · ASX</span>
-      </div>
-    </div>
-    <svg class="seam" viewBox="0 0 1200 12" preserveAspectRatio="none"><path d="M0 6 Q 300 1 600 6 T 1200 6"/></svg>
-  </header>
-
-  <section class="hero">
-    <h1>Every royalty in the ground, <em>before it's for sale.</em></h1>
-    <p>A living atlas of third-party royalties across the mining universe — mined from the technical reports themselves, sourced to the sentence, ranked for origination.</p>
-    <div class="searchbox">
-      <svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <input id="q" placeholder="Ask the atlas —  “producing gold in the Americas with an available NSR under 2%”" autocomplete="off" />
-      <span class="kbd">⏎</span>
-    </div>
-    <div class="examples" id="ex"></div>
-  </section>
-
-  <div class="stats">
-    <div class="stat"><span class="n au">1,222</span><span class="l">Royalties mapped</span></div>
-    <div class="div"></div>
-    <div class="stat"><span class="n">430</span><span class="l">Assets</span></div>
-    <div class="div"></div>
-    <div class="stat"><span class="n">168</span><span class="l">Available to acquire</span></div>
-    <div class="div"></div>
-    <div class="stat"><span class="n">87%</span><span class="l">Source-verified</span></div>
-    <div class="div"></div>
-    <div class="stat"><span class="n">19</span><span class="l">Yrs of history</span></div>
+<div class="cmd">
+  <div class="brand">
+    <div class="mark"></div>
+    <div><div class="word">LODE</div><div class="tag">Royalty Origination · OR Royalties</div></div>
   </div>
-
-  <div class="toolbar" id="bar"></div>
-  <div class="grid" id="grid"></div>
-
-  <footer>
-    <span>LODE · prospect the rock for royalty veins.</span>
-    <span class="mock">MOCKUP · hardcoded sample · looks only</span>
-  </footer>
+  <div class="search">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    <input id="q" placeholder="Ask the atlas — “available gold royalties in the Americas under 2%”" autocomplete="off"/>
+    <span class="kbd">⏎</span>
+  </div>
+  <div class="kstats">
+    <div class="kstat"><div class="n au">1,222</div><div class="l">Royalties</div></div>
+    <div class="kstat"><div class="n">430</div><div class="l">Assets</div></div>
+    <div class="kstat"><div class="n">168</div><div class="l">Available</div></div>
+    <div class="kstat"><div class="n">87%</div><div class="l">Verified</div></div>
+  </div>
+  <div class="live"><span class="d"></span>LIVE</div>
 </div>
 
+<div class="toolbar" id="bar"></div>
+<div id="view"></div>
+
+<div class="mockflag">MOCKUP · hardcoded · looks-only</div>
 <div class="backdrop" id="bd"></div>
 <aside class="drawer" id="drawer"><div class="dpad" id="dpad"></div></aside>
 
 <script>
-const M = {Au:'#e8b45a',Ag:'#c9cfd8',Cu:'#cd7d4c',Mo:'#6e8ba6',Ni:'#8fb3a0',Zn:'#9aa3b2',PGE:'#b39cd0'};
-const FLAG={Ecuador:'🇪🇨',Greece:'🇬🇷',Ghana:'🇬🇭',Peru:'🇵🇪',Quebec:'🇨🇦',Nevada:'🇺🇸',Mexico:'🇲🇽',Sudbury:'🇨🇦',Yukon:'🇨🇦',Minnesota:'🇺🇸'};
-
+const M={Au:'#e8b45a',Ag:'#c9cfd8',Cu:'#cd7d4c',Mo:'#6e8ba6',Ni:'#8fb3a0',Zn:'#9aa3b2',PGE:'#b39cd0'};
 const DATA=[
- {asset:'Warintza',op:'Solaris Resources',juris:'Ecuador',comm:['Cu','Mo','Au'],stage:'Resource',rate:'2.00%',type:'NSR',holder:'South32',hn:'via Billiton Ecuador B.V. (now BHP)',avail:'available',conf:5,cond:null,doc:'NI 43-101 · Jun 2018',
-  quote:'The Property is subject to a <b>2% net smelter return (NSR) royalty</b> in favour of Billiton Ecuador B.V. over all mineral production from the concessions comprising the Warintza project.'},
- {asset:'Namdini',op:'Cardinal Namdini (Shandong Gold)',juris:'Ghana',comm:['Au'],stage:'Development',rate:'2.00%',type:'NSR',holder:'Savanah Exploration',hn:'1% available to acquire',avail:'available',conf:5,cond:'1% buyable',doc:'NI 43-101 · 2021',
-  quote:'A <b>2% NSR royalty</b> is payable to Savanah Exploration Company Limited, of which the Company retains a right to purchase one-half (1%) for a fixed consideration.'},
- {asset:'Los Chancas',op:'Southern Copper',juris:'Peru',comm:['Cu','Mo','Au','Ag'],stage:'Resource',rate:'0.32%',type:'NSR',holder:'Glenn Cameron',hn:'+ 0.81% NSR (unavailable)',avail:'available',conf:5,cond:'stacked',doc:'NI 43-101 · 2013',
-  quote:'The Los Chancas concessions carry a <b>0.315% NSR royalty</b> held by Glenn Cameron, together with a further 0.81% NSR held by other parties.'},
- {asset:'Einarson',op:'Snowline Gold',juris:'Yukon',comm:['Au'],stage:'Exploration',rate:'2.00%',type:'NSR',holder:'18526 Yukon Inc.',hn:'Berdahl family · 1% buy-back',avail:'available',conf:5,cond:'1% buy-back',doc:'NI 43-101 · 2021',
-  quote:'The claims are subject to an underlying <b>2% NSR royalty</b> in favour of 18526 Yukon Inc., one-half of which (1%) may be re-purchased by the Company.'},
- {asset:'Victoria',op:'KGHM International',juris:'Sudbury',comm:['Ni','Cu','PGE','Au'],stage:'Development',rate:'2.25%',type:'NSR',holder:'Vale',hn:'Sudbury basin',avail:'available',conf:4,cond:null,doc:'NI 43-101 · 2020',
+ {asset:'Warintza',op:'Solaris Resources',juris:'Ecuador',comm:['Cu','Mo','Au'],stage:'Resource',rate:'2.00%',type:'NSR',holder:'South32',hn:'via Billiton Ecuador B.V.',avail:'available',conf:5,cond:null,doc:"43-101 · '18",
+  quote:'The Property is subject to a <b>2% net smelter return (NSR) royalty</b> in favour of Billiton Ecuador B.V. over all mineral production from the Warintza concessions.'},
+ {asset:'Namdini',op:'Cardinal (Shandong Gold)',juris:'Ghana',comm:['Au'],stage:'Development',rate:'2.00%',type:'NSR',holder:'Savanah Exploration',hn:'1% available',avail:'available',conf:5,cond:'1% buyable',doc:"43-101 · '21",
+  quote:'A <b>2% NSR royalty</b> is payable to Savanah Exploration Company Limited, of which the Company retains a right to purchase one-half (1%).'},
+ {asset:'Los Chancas',op:'Southern Copper',juris:'Peru',comm:['Cu','Mo','Au','Ag'],stage:'Resource',rate:'0.32%',type:'NSR',holder:'Glenn Cameron',hn:'+0.81% NSR (others)',avail:'available',conf:5,cond:'stacked',doc:"43-101 · '13",
+  quote:'The Los Chancas concessions carry a <b>0.315% NSR royalty</b> held by Glenn Cameron, plus a further 0.81% NSR held by other parties.'},
+ {asset:'Einarson',op:'Snowline Gold',juris:'Yukon',comm:['Au'],stage:'Exploration',rate:'2.00%',type:'NSR',holder:'18526 Yukon Inc.',hn:'Berdahl family · 1% BB',avail:'available',conf:5,cond:'1% buy-back',doc:"43-101 · '21",
+  quote:'The claims are subject to an underlying <b>2% NSR royalty</b> in favour of 18526 Yukon Inc., one-half of which (1%) may be re-purchased.'},
+ {asset:'Victoria',op:'KGHM International',juris:'Sudbury',comm:['Ni','Cu','PGE','Au'],stage:'Development',rate:'2.25%',type:'NSR',holder:'Vale',hn:'Sudbury basin',avail:'available',conf:4,cond:null,doc:"43-101 · '20",
   quote:'Production from the Victoria property is subject to a <b>2.25% net smelter return royalty</b> payable to Vale Canada Limited.'},
- {asset:'Sleeping Giant',op:'Abcourt Mines',juris:'Quebec',comm:['Au'],stage:'Development',rate:'2.00%',type:'NSR',holder:'Maverix Metals',hn:'buys down to 1.0% floor',avail:'held',conf:5,cond:'buy-down $2M / $4M',doc:'NI 43-101 · 2023',
-  quote:'Abcourt granted Maverix Metals Inc. a <b>2% NSR royalty</b>; the rate may be reduced by 0.5% on payment of US$2,000,000 before the 3rd anniversary, and a further 0.5% on US$4,000,000 before the 6th, to a 1.0% floor.'},
- {asset:'Cortez',op:'Nevada Gold Mines',juris:'Nevada',comm:['Au'],stage:'Producing',rate:'0.7–1.3%',type:'GSR',holder:'Idaho Mining Corp.',hn:'sliding scale + others',avail:'partial',conf:5,cond:'sliding scale',doc:'NI 43-101 · 2020',
-  quote:'Portions of the Cortez complex are burdened by a <b>sliding-scale gross smelter return royalty of approximately 0.7% to 1.3%</b> held by Idaho Mining Corporation.'},
- {asset:'Yanacocha',op:'Newmont',juris:'Peru',comm:['Au','Ag','Cu'],stage:'Producing',rate:'1.80%',type:'NSR',holder:'Buenaventura',hn:'partial coverage',avail:'partial',conf:4,cond:null,doc:'NI 43-101 · 2019',
+ {asset:'Sleeping Giant',op:'Abcourt Mines',juris:'Quebec',comm:['Au'],stage:'Development',rate:'2.00%',type:'NSR',holder:'Maverix Metals',hn:'→1.0% floor',avail:'held',conf:5,cond:'buy-down $2M/$4M',doc:"43-101 · '23",
+  quote:'Abcourt granted Maverix Metals Inc. a <b>2% NSR royalty</b>; reducible by 0.5% on US$2M before yr 3, a further 0.5% on US$4M before yr 6, to a 1.0% floor.'},
+ {asset:'Cortez',op:'Nevada Gold Mines',juris:'Nevada',comm:['Au'],stage:'Producing',rate:'0.7–1.3%',type:'GSR',holder:'Idaho Mining Corp.',hn:'sliding + others',avail:'partial',conf:5,cond:'sliding scale',doc:"43-101 · '20",
+  quote:'Portions of Cortez are burdened by a <b>sliding-scale gross smelter return royalty of ~0.7% to 1.3%</b> held by Idaho Mining Corporation.'},
+ {asset:'Yanacocha',op:'Newmont',juris:'Peru',comm:['Au','Ag','Cu'],stage:'Producing',rate:'1.80%',type:'NSR',holder:'Buenaventura',hn:'partial coverage',avail:'partial',conf:4,cond:null,doc:"43-101 · '19",
   quote:'Certain Yanacocha concessions are subject to a <b>1.8% NSR royalty</b> in favour of Compañía de Minas Buenaventura S.A.A.'},
- {asset:'Windfall',op:'Osisko Mining',juris:'Quebec',comm:['Au'],stage:'Development',rate:'3.50%',type:'GVR',holder:'Rocky Canyon Mining',hn:'+ 1.5% GVR (Bisoni)',avail:'held',conf:4,cond:'stacked',doc:'NI 43-101 · 2022',
-  quote:'The Windfall property is subject to a <b>3.5% gross value royalty</b> held by Rocky Canyon Mining Company and a further 1.5% GVR held by Géneve and Mary Bisoni.'},
- {asset:'San Nicolás',op:'Teck / Agnico Eagle',juris:'Mexico',comm:['Cu','Zn'],stage:'Development',rate:'1.50%',type:'NSR',holder:'Rio Tinto',hn:'VMS deposit',avail:'held',conf:5,cond:null,doc:'NI 43-101 · 2023',
+ {asset:'Windfall',op:'Osisko Mining',juris:'Quebec',comm:['Au'],stage:'Development',rate:'3.50%',type:'GVR',holder:'Rocky Canyon Mining',hn:'+1.5% GVR (Bisoni)',avail:'held',conf:4,cond:'stacked',doc:"43-101 · '22",
+  quote:'The Windfall property is subject to a <b>3.5% gross value royalty</b> held by Rocky Canyon Mining and a further 1.5% GVR held by the Bisoni family.'},
+ {asset:'San Nicolás',op:'Teck / Agnico',juris:'Mexico',comm:['Cu','Zn'],stage:'Development',rate:'1.50%',type:'NSR',holder:'Rio Tinto',hn:'VMS deposit',avail:'held',conf:5,cond:null,doc:"43-101 · '23",
   quote:'The San Nicolás project is subject to a <b>1.5% net smelter return royalty</b> in favour of a subsidiary of Rio Tinto.'},
- {asset:'Terronera',op:'Endeavour Silver',juris:'Mexico',comm:['Ag','Au'],stage:'Producing',rate:'2.00%',type:'NSR',holder:'Grupo México',hn:'on-mine + off-mine',avail:'held',conf:4,cond:null,doc:'NI 43-101 · 2021',
+ {asset:'Terronera',op:'Endeavour Silver',juris:'Mexico',comm:['Ag','Au'],stage:'Producing',rate:'2.00%',type:'NSR',holder:'Grupo México',hn:'on/off-mine',avail:'held',conf:4,cond:null,doc:"43-101 · '21",
   quote:'A <b>2% NSR royalty</b> on the Terronera property is held by a subsidiary of Grupo México (IMMSA).'},
- {asset:'NorthMet',op:'NewRange (PolyMet)',juris:'Minnesota',comm:['Cu','Ni','PGE'],stage:'Development',rate:'3–5%',type:'NSR',holder:'RGGS Land & Minerals',hn:'sliding scale',avail:'held',conf:3,cond:'sliding scale',doc:'NI 43-101 · 2022',
+ {asset:'NorthMet',op:'NewRange (PolyMet)',juris:'Minnesota',comm:['Cu','Ni','PGE'],stage:'Development',rate:'3–5%',type:'NSR',holder:'RGGS Land & Minerals',hn:'sliding scale',avail:'held',conf:3,cond:'sliding scale',doc:"43-101 · '22",
   quote:'The NorthMet deposit is subject to a <b>sliding-scale NSR royalty of 3% to 5%</b> payable to RGGS Land &amp; Minerals Company, L.P.'},
- {asset:'Skouries',op:'Eldorado Gold',juris:'Greece',comm:['Au','Cu'],stage:'Development',rate:'1.50%',type:'NSR',holder:'Multiple',hn:'+ 0.5% NSR tranche',avail:'partial',conf:3,cond:'stacked',doc:'NI 43-101 · 2021',
+ {asset:'Skouries',op:'Eldorado Gold',juris:'Greece',comm:['Au','Cu'],stage:'Development',rate:'1.50%',type:'NSR',holder:'Multiple',hn:'+0.5% tranche',avail:'partial',conf:3,cond:'stacked',doc:"43-101 · '21",
   quote:'Skouries production is subject to a <b>1.5% NSR</b> and an additional 0.5% NSR tranche over defined concession areas.'},
- {asset:'Fruta del Norte',op:'Lundin Gold',juris:'Ecuador',comm:['Au'],stage:'Producing',rate:'1.00%',type:'NSR',holder:'Sandstorm / Osisko',hn:'0.9% + 0.1% split',avail:'held',conf:4,cond:'stacked',doc:'NI 43-101 · 2020',
-  quote:'The FDN project carries a <b>1% net revenue royalty</b>, split 0.9% to Sandstorm Gold Ltd. and 0.1% to Osisko Gold Royalties.'},
+ {asset:'Fruta del Norte',op:'Lundin Gold',juris:'Ecuador',comm:['Au'],stage:'Producing',rate:'1.00%',type:'NSR',holder:'Sandstorm / Osisko',hn:'0.9% + 0.1%',avail:'held',conf:4,cond:'stacked',doc:"43-101 · '20",
+  quote:'The FDN project carries a <b>1% net revenue royalty</b>, split 0.9% to Sandstorm Gold and 0.1% to Osisko Gold Royalties.'},
 ];
+const el=h=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstChild;};
+const cap=s=>s[0].toUpperCase()+s.slice(1);
+const AVR={available:0,partial:1,held:2};
+const rateNum=s=>parseFloat((s.match(/[\d.]+/)||[0])[0]);
 
-const CONFLBL=['','low','','medium','','high'];
-const el=(h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstChild;};
+const state={comm:new Set(),stage:new Set(),avail:new Set(),q:'',sort:'avail',dir:1,view:'table'};
 
-// ── filters ──
-const COMM=['Au','Ag','Cu','Ni','Zn','Mo','PGE'];
-const STAGE=['Producing','Development','Resource','Exploration'];
-const AVAIL=[['available','Available'],['partial','Partial'],['held','Held']];
-const state={comm:new Set(),stage:new Set(),avail:new Set(),q:''};
-
+// ── toolbar ──
 const bar=document.getElementById('bar');
-function chip(label,val,cls,color){
-  const c=el(`<span class="chip" ${color?`style="--c:${color}"`:''}>${color?'<span class="swatch"></span>':''}${label}</span>`);
-  c.onclick=()=>{const s=state[cls];s.has(val)?s.delete(val):s.add(val);c.classList.toggle('on');render();};
+function chip(label,val,grp,color){
+  const c=el(`<span class="chip" ${color?`style="--c:${color}"`:''}>${color?'<span class="sw"></span>':''}${label}</span>`);
+  c.onclick=()=>{const s=state[grp];s.has(val)?s.delete(val):s.add(val);c.classList.toggle('on');render();};
   return c;
 }
 bar.append(el('<span class="glabel">Metal</span>'));
-COMM.forEach(m=>bar.append(chip(m,m,'comm',M[m])));
-bar.append(el('<span class="glabel" style="margin-left:8px">Stage</span>'));
-STAGE.forEach(s=>bar.append(chip(s,s,'stage')));
-bar.append(el('<span class="glabel" style="margin-left:8px">Status</span>'));
-AVAIL.forEach(([v,l])=>bar.append(chip(l,v,'avail', v==='available'?'#f5b23e':null)));
-const count=el('<span class="count"></span>');bar.append(count);
-
-const EX=['available NSR under 2%','private holders','gold · Americas · producing','buy-down or buy-back','copper development'];
-const exWrap=document.getElementById('ex');
-EX.forEach(t=>{const c=el(`<span class="ex">${t}</span>`);c.onclick=()=>{document.getElementById('q').value=t;state.q=t.toLowerCase();render();};exWrap.append(c);});
+['Au','Ag','Cu','Ni','Zn','Mo','PGE'].forEach(m=>bar.append(chip(m,m,'comm',M[m])));
+bar.append(el('<span class="glabel" style="margin-left:6px">Stage</span>'));
+['Producing','Development','Resource','Exploration'].forEach(s=>bar.append(chip(s,s,'stage')));
+bar.append(el('<span class="glabel" style="margin-left:6px">Status</span>'));
+[['available','Available'],['partial','Partial'],['held','Held']].forEach(([v,l])=>bar.append(chip(l,v,'avail',v==='available'?'#f5b23e':null)));
+const rt=el('<div class="rt"></div>');
+const tog=el(`<div class="toggle"><button data-v="table" class="on">▤ Table</button><button data-v="cards">▦ Cards</button></div>`);
+tog.querySelectorAll('button').forEach(b=>b.onclick=()=>{state.view=b.dataset.v;tog.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));render();});
+const count=el('<span class="count"></span>');
+rt.append(tog,count);bar.append(rt);
 document.getElementById('q').addEventListener('input',e=>{state.q=e.target.value.toLowerCase();render();});
 
-// ── render rows ──
-const grid=document.getElementById('grid');
+// ── columns ──
+const COLS=[
+ {k:'asset',t:'Asset'},{k:'op',t:'Operator'},{k:'juris',t:'Jurisdiction'},{k:'comm',t:'Commodity',nosort:1},
+ {k:'stage',t:'Stage'},{k:'rate',t:'Royalty',num:1},{k:'type',t:'Type'},{k:'holder',t:'Held by'},
+ {k:'avail',t:'Status'},{k:'conf',t:'Conf',num:1},{k:'doc',t:'Source'}];
+function sortVal(d,k){if(k==='rate')return rateNum(d.rate);if(k==='conf')return d.conf;if(k==='avail')return AVR[d.avail];if(k==='comm')return d.comm[0];return (d[k]||'').toString().toLowerCase();}
+
 function match(d){
   if(state.comm.size && !d.comm.some(c=>state.comm.has(c)))return false;
   if(state.stage.size && !state.stage.has(d.stage))return false;
   if(state.avail.size && !state.avail.has(d.avail))return false;
   if(state.q){const blob=(d.asset+' '+d.op+' '+d.juris+' '+d.holder+' '+d.hn+' '+d.comm.join(' ')+' '+d.stage+' '+d.type+' '+d.avail+' '+(d.cond||'')+' '+d.rate).toLowerCase();
-    // loose: every word in query must appear somewhere (skip filler words)
-    const words=state.q.split(/[^a-z0-9.%]+/).filter(w=>w.length>1 && !['under','with','and','the','an','a','or'].includes(w));
+    const words=state.q.split(/[^a-z0-9.%]+/).filter(w=>w.length>1 && !['under','with','and','the','an','or','in','a'].includes(w));
     if(words.length && !words.every(w=>blob.includes(w)))return false;}
   return true;
 }
-function coreBar(comm){
-  const segs=comm.map(c=>`<span style="flex:1;background:${M[c]}"></span>`).join('');
-  const lbl=comm.map(c=>`<i style="color:${M[c]}">${c}</i>`).join('');
-  return `<div class="core"><div class="corebar">${segs}</div><div class="corelbl">${lbl}</div></div>`;
-}
-function confBars(n){return `<div class="conf"><div class="bars">${[1,2,3,4,5].map(i=>`<i class="${i<=n?'f':''}"></i>`).join('')}</div><small>${CONFLBL[n]}</small></div>`;}
+function rows(){const r=DATA.filter(match);const k=state.sort;
+  r.sort((a,b)=>{const x=sortVal(a,k),y=sortVal(b,k);return (x<y?-1:x>y?1:0)*state.dir;});return r;}
+function commChips(comm){return `<div class="comm">${comm.map(c=>`<span style="--cc:${M[c]}">${c}</span>`).join('')}</div>`;}
+function confBars(n){return `<div class="conf">${[1,2,3,4,5].map(i=>`<i class="${i<=n?'f':''}"></i>`).join('')}</div>`;}
+function pill(a){return `<span class="pill ${a}"><span class="d"></span>${cap(a)}</span>`;}
 
+// ── render ──
+const view=document.getElementById('view');
 function render(){
-  const rows=DATA.filter(match);
-  count.innerHTML=`<b>${rows.length}</b> / ${DATA.length} opportunities`;
-  grid.innerHTML='';
-  if(!rows.length){grid.append(el(`<div style="border:1px dashed var(--line);border-radius:15px;padding:48px;text-align:center;color:var(--text-2)">No royalties match. <span style="color:var(--gold);cursor:pointer" onclick="clearAll()">Clear filters</span></div>`));return;}
-  rows.forEach((d,i)=>{
-    const vein=M[d.comm[0]];
-    const r=el(`<div class="row" style="--vein:${vein};animation-delay:${i*45}ms">
-      <div class="asset"><div class="name">${d.asset}</div><div class="op"><span class="fl">◈</span>${d.op} · ${d.juris}</div></div>
-      ${coreBar(d.comm)}
-      <div class="rate"><div class="v">${d.rate}</div><div class="t">${d.type}</div>${d.cond?`<div class="cond">${d.cond}</div>`:''}</div>
-      <div class="holder"><div class="lab">held by</div><div class="h">${d.holder}</div><div class="hn">${d.hn}</div></div>
-      <div class="avail"><span class="pill ${d.avail}"><span class="d"></span>${d.avail[0].toUpperCase()+d.avail.slice(1)}</span>${confBars(d.conf)}</div>
-      <div class="go">open ↗</div>
-    </div>`);
-    r.onclick=()=>openDrawer(d);
-    grid.append(r);
-  });
+  const r=rows();
+  count.innerHTML=`<b>${r.length}</b> / ${DATA.length}`;
+  view.innerHTML='';
+  if(!r.length){view.append(el(`<div style="padding:60px;text-align:center;color:var(--text-2)">No royalties match. <span style="color:var(--gold);cursor:pointer" onclick="clearAll()">Clear</span></div>`));return;}
+  state.view==='table'?renderTable(r):renderCards(r);
+}
+function renderTable(r){
+  const wrap=el('<div class="tablewrap"></div>');
+  const head=COLS.map(c=>{const on=state.sort===c.k;return `<th class="${c.num?'num':''} ${on?'sorted':''}" data-k="${c.k}" ${c.nosort?'style="cursor:default"':''}>${c.t}${c.nosort?'':`<span class="ar">${on&&state.dir<0?'↓':'↑'}</span>`}</th>`;}).join('');
+  const body=r.map(d=>{const vein=M[d.comm[0]];return `<tr data-a="${d.asset}">
+    <td class="asset" style="--vein:${vein}"><span class="vein"></span><span class="nm">${d.asset}</span></td>
+    <td class="op">${d.op}</td><td class="juris">${d.juris}</td>
+    <td>${commChips(d.comm)}</td>
+    <td><span class="stage">${d.stage}</span></td>
+    <td class="rate"><div class="v">${d.rate}</div>${d.cond?`<div class="c">${d.cond}</div>`:''}</td>
+    <td class="type">${d.type}</td>
+    <td class="holder"><div class="h">${d.holder}</div><div class="hn">${d.hn}</div></td>
+    <td>${pill(d.avail)}</td>
+    <td>${confBars(d.conf)}</td>
+    <td class="src">${d.doc} ↗</td></tr>`;}).join('');
+  wrap.innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  wrap.querySelectorAll('th[data-k]').forEach(th=>{const c=COLS.find(x=>x.k===th.dataset.k);if(c.nosort)return;
+    th.onclick=()=>{if(state.sort===c.k)state.dir*=-1;else{state.sort=c.k;state.dir=1;}render();};});
+  wrap.querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>openDrawer(DATA.find(d=>d.asset===tr.dataset.a)));
+  view.append(wrap);
+}
+function renderCards(r){
+  const grid=el('<div class="cards"></div>');
+  r.forEach(d=>{const vein=M[d.comm[0]];const c=el(`<div class="card" style="--vein:${vein}">
+    <div class="top"><div><div class="nm">${d.asset}</div><div class="op">${d.op} · ${d.juris}</div></div>
+      <div><div class="rr">${d.rate}</div><div class="rt2">${d.type}</div></div></div>
+    <div class="mid">${commChips(d.comm)}<span class="stage">${d.stage}</span>${pill(d.avail)}</div>
+    <div class="foot"><span class="hh">held by <b>${d.holder}</b></span>${confBars(d.conf)}</div></div>`);
+    c.onclick=()=>openDrawer(d);grid.append(c);});
+  view.append(grid);
 }
 function clearAll(){state.comm.clear();state.stage.clear();state.avail.clear();state.q='';document.getElementById('q').value='';document.querySelectorAll('.chip.on').forEach(c=>c.classList.remove('on'));render();}
 
 // ── drawer ──
 const bd=document.getElementById('bd'),drawer=document.getElementById('drawer'),dpad=document.getElementById('dpad');
 function openDrawer(d){
-  dpad.innerHTML=`
-    <button class="dclose" onclick="closeDrawer()">✕</button>
-    <div class="deye">${d.stage} · ${d.juris}</div>
-    <div class="dtitle">${d.asset}</div>
-    <div class="dmeta">${d.op}</div>
+  dpad.innerHTML=`<button class="dclose" onclick="closeDrawer()">✕</button>
+    <div class="deye">${d.stage} · ${d.juris}</div><div class="dtitle">${d.asset}</div><div class="dmeta">${d.op}</div>
     <div class="dgrid">
       <div class="cell"><div class="k">Headline royalty</div><div class="v au">${d.rate} ${d.type}</div></div>
-      <div class="cell"><div class="k">Status</div><div class="v"><span class="pill ${d.avail}" style="font-size:11px"><span class="d"></span>${d.avail[0].toUpperCase()+d.avail.slice(1)}</span></div></div>
+      <div class="cell"><div class="k">Status</div><div class="v">${pill(d.avail)}</div></div>
       <div class="cell"><div class="k">Held by</div><div class="v">${d.holder}</div></div>
       <div class="cell"><div class="k">Commodities</div><div class="v">${d.comm.join(' · ')}</div></div>
     </div>
     <div class="sec">Verbatim from the technical report</div>
-    <div class="assay">
-      <div class="q">“${d.quote}”</div>
-      <div class="cite"><span>${d.doc}</span> · <span class="verified">✓ source-verified</span></div>
-    </div>
-    ${d.cond?`<div class="sec">Structure</div><div class="rlist"><div class="ritem"><span class="rr">${d.rate} ${d.type}</span><span class="rh">${d.cond} · ${d.hn}</span></div></div>`:''}
-    <div class="dact">
-      <div class="btn primary">Add to origination pipeline</div>
-      <div class="btn ghost">Open report ↗</div>
-    </div>`;
+    <div class="assay"><div class="q">“${d.quote}”</div><div class="cite">${d.doc.replace('·','· NI')} &nbsp;·&nbsp; <span class="verified">✓ source-verified</span></div></div>
+    ${d.cond?`<div class="sec">Structure</div><div class="assay" style="border-left-color:var(--line-2)"><div class="q" style="font-size:13px">${d.cond} — ${d.hn}</div></div>`:''}
+    <div class="dact"><div class="btn primary">Add to origination pipeline</div><div class="btn ghost">Open report ↗</div></div>`;
   bd.classList.add('open');drawer.classList.add('open');
 }
 function closeDrawer(){bd.classList.remove('open');drawer.classList.remove('open');}
-bd.onclick=closeDrawer;
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
-
+bd.onclick=closeDrawer;document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+const exq=['available under 2%','private holders','producing gold','buy-down'];
 render();
 </script>
 </body>
