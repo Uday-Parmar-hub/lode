@@ -217,13 +217,13 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
 
   return (
     <div className="dpad">
-      <div className="dnav">
-        <button onClick={() => onNav(-1)} disabled={idx <= 0} title="Previous (↑)">↑</button>
-        <button onClick={() => onNav(1)} disabled={idx >= total - 1} title="Next (↓)">↓</button>
-        <span className="pos">{idx + 1} / {total}</span>
+      <div className="dhead">
+        <button className="iconbtn" onClick={() => onNav(-1)} disabled={idx <= 0} title="Previous (↑)" aria-label="Previous">↑</button>
+        <button className="iconbtn" onClick={() => onNav(1)} disabled={idx >= total - 1} title="Next (↓)" aria-label="Next">↓</button>
+        <span className="pos">{idx + 1} <em>/ {total}</em></span>
         <span style={{ flex: 1 }} />
         <span className={`pill ${r.status}`}><StatusDot s={r.status} />{cap(r.status)}</span>
-        <button onClick={onClose} title="Close (Esc)">✕</button>
+        <button className="closebtn" onClick={onClose} title="Close (Esc)"><span aria-hidden>✕</span> Close</button>
       </div>
       <div className="deye">{r.stage} · {r.juris}</div>
       <div className="dtitle">{r.asset}</div>
@@ -272,9 +272,11 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
         <textarea placeholder="Comments — grounds the decision…" defaultValue={r.comments ?? ""} onChange={(e) => setDraft((d) => ({ ...d, comments: e.target.value }))} />
       </div>
       <div className="dact">
-        <button className="btn primary" disabled={!!saving} onClick={() => persist({ status: "validated" })}>{saving === "validated" ? "Saving…" : "Validate"}</button>
-        <button className="btn ghost" disabled={!!saving} onClick={() => persist({ status: "rejected" })}>Reject</button>
-        <button className="btn ghost" disabled={!!saving} onClick={() => persist({})}>Save</button>
+        <button className="btn primary" disabled={!!saving} onClick={() => persist({ status: "validated" })}>
+          <span aria-hidden>✓</span> {saving === "validated" ? "Saving…" : "Validate"}
+        </button>
+        <button className="btn danger" disabled={!!saving} onClick={() => persist({ status: "rejected" })}>Reject</button>
+        <button className="btn ghost" disabled={!!saving} onClick={() => persist({})}>{saving === "save" ? "Saving…" : "Save"}</button>
       </div>
     </div>
   );
