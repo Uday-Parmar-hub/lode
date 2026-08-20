@@ -99,3 +99,37 @@ URL + the trial password (the part after `matt:` in `GATE`). Tell him it's a fee
 ## Later (post-trial): Entra SSO
 Replace the password gate with App Service Easy Auth: new Entra app registration → redirect
 `https://$APP.azurewebsites.net/.auth/login/aad/callback` → `az webapp auth` config. Remove `LODE_BASIC_AUTH`.
+
+---
+
+## WHAT WE ACTUALLY SHIPPED (2026-08-20) — Container Apps, not App Service
+App Service (`Microsoft.Web`) and `Microsoft.Storage` are **NOT registered** in this subscription and
+uparmar lacks rights to register them. MarketWatch itself runs on **Azure Container Apps**, so LODE ships
+the same way. Reused: registry **ormwacr01** (`ormwacr01.azurecr.io`), env **mw-env**, RG **RG-Marketwatch**.
+5432 is blocked from the corp network → the DB was loaded via **Cloud Shell** (strip the v17-only
+`transaction_timeout` line before restoring into the v16 server).
+
+**Live URL:** https://lode-dashboard.greenmeadow-9faacea3.canadacentral.azurecontainerapps.io/
+**Gate:** `matt` / `***REDACTED***` (env `LODE_BASIC_AUTH`)
+
+Build the image in the cloud (no local Docker needed) — run in `dashboard/`:
+```sh
+az acr build --registry ormwacr01 --image lode-dashboard:v1 --file Dockerfile .
+```
+First deploy (done):
+```sh
+ACRPW=$(az acr credential show -n ormwacr01 --query "passwords[0].value" -o tsv)
+az containerapp create -g RG-Marketwatch -n lode-dashboard --environment mw-env \
+  --image ormwacr01.azurecr.io/lode-dashboard:v1 \
+  --registry-server ormwacr01.azurecr.io --registry-username ormwacr01 --registry-password "$ACRPW" \
+  --target-port 3000 --ingress external --cpu 0.5 --memory 1.0Gi --min-replicas 1 --max-replicas 1 \
+  --env-vars DATABASE_URL="postgresql://lodeadmin:...@lode-pg-orr.postgres.database.azure.com:5432/lode?sslmode=require" \
+             DATABASE_URL_RO="postgresql://lode_ro:...@lode-pg-orr.postgres.database.azure.com:5432/lode?sslmode=require" \
+             ANTHROPIC_API_KEY="..." LODE_BASIC_AUTH="matt:***REDACTED***"
+```
+**Redeploy after code changes** (bump the tag, build, point the app at it):
+```sh
+az acr build --registry ormwacr01 --image lode-dashboard:v2 --file Dockerfile .
+az containerapp update -g RG-Marketwatch -n lode-dashboard --image ormwacr01.azurecr.io/lode-dashboard:v2
+```
+**To refresh the data** after new extraction/dedup: re-dump locally, re-upload to Cloud Shell, `psql -f`.
