@@ -4,15 +4,22 @@ import { Pool } from "pg";
 // new pool per module re-eval. Reads DATABASE_URL (dashboard/.env.local) — the local conda Postgres.
 const globalForPg = globalThis as unknown as { _lodePool?: Pool; _lodePoolRO?: Pool };
 
+// Azure Database for PostgreSQL requires TLS (connection strings carry `?sslmode=require`). node-pg needs
+// the ssl option set explicitly; rejectUnauthorized:false accepts Azure's managed cert. Local Postgres has
+// no sslmode in its URL, so ssl stays off and nothing changes for local dev.
+const sslFor = (url?: string): { rejectUnauthorized: boolean } | undefined =>
+  url && url.includes("sslmode=require") ? { rejectUnauthorized: false } : undefined;
+
 export const pool: Pool =
   globalForPg._lodePool ??
-  new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
+  new Pool({ connectionString: process.env.DATABASE_URL, max: 5, ssl: sslFor(process.env.DATABASE_URL) });
 
 // Separate pool on the SELECT-only `lode_ro` role for the AI text-to-SQL path — LLM-generated queries
 // never touch the owner connection. The role also forces read-only txns + a statement timeout server-side.
+const roUrl = process.env.DATABASE_URL_RO ?? process.env.DATABASE_URL;
 export const poolRO: Pool =
   globalForPg._lodePoolRO ??
-  new Pool({ connectionString: process.env.DATABASE_URL_RO ?? process.env.DATABASE_URL, max: 3 });
+  new Pool({ connectionString: roUrl, max: 3, ssl: sslFor(roUrl) });
 
 if (process.env.NODE_ENV !== "production") {
   globalForPg._lodePool = pool;
