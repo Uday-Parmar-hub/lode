@@ -105,16 +105,21 @@ Rules:
 - jurisdiction, operator, holder, project_name, stage, royalty_type are free text -> use ILIKE '%...%'.
 - Use OR / NOT / ranges / ORDER BY / GROUP BY / aggregates freely. Always add a LIMIT for non-aggregate lists.
 - "corroborated by the most reports" etc. -> group by dup_key or use a subquery counting rows per dup_key.
-- explanation: one plain sentence describing what the query returns.`;
+- explanation: one plain sentence describing what the query returns.
+- STAY IN SCOPE. If the request is not answerable from this royalties table — general knowledge, chit-chat,
+  jokes/stories/creative writing, math, coding, or anything unrelated to these mining royalties — set
+  mode="reject", leave sql empty, and make explanation ONE friendly line saying what this search is for,
+  e.g. "I only search the royalty database — try assets, holders, rates, jurisdictions, or an aggregate like
+  'top holders by number of royalties'." Never invent a query for an unrelated request.`;
 
 const SQL_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["mode", "sql", "explanation"],
   properties: {
-    mode: { type: "string", enum: ["rows", "table"], description: "rows = list royalties in the grid; table = an aggregate answer" },
-    sql: { type: "string", description: "one read-only PostgreSQL SELECT over the royalties table" },
-    explanation: { type: "string", description: "one sentence: what the query returns" },
+    mode: { type: "string", enum: ["rows", "table", "reject"], description: "rows = list royalties in the grid; table = an aggregate answer; reject = the request isn't about the royalty database" },
+    sql: { type: "string", description: "one read-only PostgreSQL SELECT over the royalties table; empty when mode=reject" },
+    explanation: { type: "string", description: "one sentence: what the query returns, or (reject) what this search is for" },
   },
 };
 
@@ -142,7 +147,7 @@ function cell(v: unknown): string {
 
 export interface AiQueryResult {
   ok: boolean;
-  mode: "rows" | "table";
+  mode: "rows" | "table" | "reject";
   explanation: string;
   sql: string;
   ids?: string[];          // rows mode: matching ids, in the query's order
@@ -175,6 +180,13 @@ export async function aiQuery(nl: string): Promise<AiQueryResult> {
   }
 
   const explanation = (spec.explanation ?? "").trim();
+  // off-topic / not-a-database request: decline gracefully instead of fabricating a query
+  if (spec.mode === "reject") {
+    return {
+      ok: true, mode: "reject", sql: "",
+      explanation: explanation || "I only search the royalty database — try assets, holders, rates, jurisdictions, or an aggregate like “top holders by number of royalties”.",
+    };
+  }
   const mode = spec.mode === "table" ? "table" : "rows";
   const check = validateSelect(spec.sql ?? "");
   if (!check.ok) {

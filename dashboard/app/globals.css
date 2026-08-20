@@ -250,6 +250,9 @@ tbody tr:hover .src{color:var(--gold-hi)}
   background:linear-gradient(90deg,rgba(245,178,62,.1),rgba(245,178,62,0) 65%)}
 .aibar.warn{background:linear-gradient(90deg,rgba(230,180,90,.1),transparent 65%)}
 .aibar.err{background:linear-gradient(90deg,rgba(224,113,90,.12),transparent 65%)}
+.aibar.info{background:linear-gradient(90deg,rgba(87,224,207,.08),transparent 65%)}
+.aibar.info .aimark{color:var(--cyan);filter:none}
+.aibar.info .aitext{font-style:normal;color:var(--text-2)}
 .aibar .aimark{color:var(--gold);font-size:14px;filter:drop-shadow(0 0 7px rgba(245,178,62,.5));flex:none}
 .aibar.err .aimark{color:#e0715a;filter:none}
 .aibar .aitext{font-size:13px;color:var(--text);font-style:italic}

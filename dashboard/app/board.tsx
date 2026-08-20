@@ -54,7 +54,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [aiIds, setAiIds] = useState<Set<string> | null>(null);
   const [aiOrder, setAiOrder] = useState<Map<string, number> | null>(null);
   const [aiTable, setAiTable] = useState<{ fields: string[]; rows: string[][] } | null>(null);
-  const [aiInfo, setAiInfo] = useState<{ explanation: string; sql: string; kind: "rows" | "table" | "error" } | null>(null);
+  const [aiInfo, setAiInfo] = useState<{ explanation: string; sql: string; kind: "rows" | "table" | "error" | "reject" } | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [showSql, setShowSql] = useState(false);
   const aiActive = aiIds !== null || aiTable !== null || aiInfo !== null;
@@ -74,6 +74,9 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       if (!res.ok) {
         setAiIds(null); setAiOrder(null); setAiTable(null);
         setAiInfo({ explanation: res.error || "Search failed — try rephrasing.", sql: res.sql || "", kind: "error" });
+      } else if (res.mode === "reject") {
+        setAiIds(null); setAiOrder(null); setAiTable(null);
+        setAiInfo({ explanation: res.explanation, sql: "", kind: "reject" });
       } else if (res.mode === "table") {
         setAiIds(null); setAiOrder(null);
         setAiTable({ fields: res.fields || [], rows: res.rows || [] });
@@ -170,8 +173,8 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       </div>
 
       {aiInfo && (<>
-        <div className={`aibar${aiInfo.kind === "error" ? " err" : ""}`}>
-          <span className="aimark">✦</span>
+        <div className={`aibar${aiInfo.kind === "error" ? " err" : ""}${aiInfo.kind === "reject" ? " info" : ""}`}>
+          <span className="aimark">{aiInfo.kind === "reject" ? "◍" : "✦"}</span>
           <span className="aitext">{aiInfo.explanation}</span>
           {aiInfo.kind === "table" && <span className="aichip">aggregate</span>}
           <span style={{ flex: 1 }} />
