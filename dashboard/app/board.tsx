@@ -286,13 +286,15 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
   const [draft, setDraft] = useState<ReviewPatch>({});
   const [saving, setSaving] = useState<string | null>(null);
   useEffect(() => { setDraft({}); }, [r.id]);
+  // ReviewPatch keys mostly match Royalty fields; `availability` maps to the row's `avail` alias.
+  const ROWKEY: Partial<Record<keyof ReviewPatch, string>> = { availability: "avail" };
   const cur = <K extends keyof ReviewPatch>(k: K): ReviewPatch[K] =>
-    (draft[k] !== undefined ? draft[k] : (r as unknown as Record<string, unknown>)[k]) as ReviewPatch[K];
+    (draft[k] !== undefined ? draft[k] : (r as unknown as Record<string, unknown>)[ROWKEY[k] ?? k]) as ReviewPatch[K];
 
   // Send the *effective* value of every editable field (draft ?? current), so saving one field
   // (or just clicking Validate) never nulls out the others the analyst set earlier.
   const EDITABLE: (keyof ReviewPatch)[] = [
-    "tier", "keep", "score_project_quality", "score_instrument_quality",
+    "tier", "keep", "availability", "score_project_quality", "score_instrument_quality",
     "score_confidence", "score_actionable", "comments", "rank", "link",
   ];
   const persist = async (extra: ReviewPatch) => {
@@ -301,7 +303,8 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
     setSaving(extra.status ?? "save");
     const res = await saveReview(r.id, patch);
     setSaving(null);
-    if (res.ok) onApply(patch as Partial<Royalty>);
+    // map availability back onto the row's `avail` alias so the detail reflects it immediately
+    if (res.ok) onApply({ ...patch, ...(patch.availability != null ? { avail: patch.availability } : {}) } as Partial<Royalty>);
   };
   const SCORES: [keyof ReviewPatch, string][] = [
     ["score_project_quality", "Project quality"], ["score_instrument_quality", "Instrument quality"],
@@ -326,7 +329,7 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       <div className="dgrid">
         <Cell k="Rate" v={`${r.rate ?? "—"} ${r.type ?? ""}`} gold />
         <Cell k="Held by" v={<>{r.holder ?? "—"}{r.holder_note && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.holder_note}</div>}</>} />
-        <Cell k="Royalty available" v={<span className={`avail-${r.avail}`}>{cap(r.avail)}</span>} />
+        <Cell k="Royalty available" v={<span className={`avail-${cur("availability")}`}>{cap((cur("availability") as string) || "unknown")}</span>} />
         <Cell k="Confidence" v={r.conf != null ? `${r.conf} / 5` : "—"} />
         <Cell k="Commodity" v={(r.commodity || []).join(" · ")} />
         <Cell k="Regime" v={r.regime} />
@@ -355,6 +358,9 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
 
       <div className="sec">Review · analyst</div>
       <div className="review">
+        <div className="rfield"><span className="rk">Available?</span>
+          <div className="seg">{["available", "partial", "held", "unknown"].map((a) => <button key={a} className={cur("availability") === a ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, availability: a }))}>{cap(a)}</button>)}</div>
+        </div>
         <div className="rfield"><span className="rk">Tier</span>
           <div className="seg">{[1, 2, 3].map((t) => <button key={t} className={cur("tier") === t ? "on" : ""} onClick={() => setDraft((d) => ({ ...d, tier: d.tier === t ? null : t }))}>{t}</button>)}</div>
         </div>

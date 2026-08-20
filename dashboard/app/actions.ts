@@ -14,6 +14,7 @@ export interface ReviewPatch {
   comments?: string | null;
   rank?: number | null;
   link?: string | null;
+  availability?: string | null; // royalty_available enum: available | partial | held | unknown
 }
 
 /** Persist an analyst's review of one royalty. Nothing is "committed" until this runs (Matt's rule). */
@@ -25,12 +26,13 @@ export async function saveReview(id: string, p: ReviewPatch): Promise<{ ok: bool
        score_project_quality = $5, score_instrument_quality = $6,
        score_confidence = $7, score_actionable = $8,
        comments = $9, rank = $10, link = $11,
+       royalty_available = coalesce($12::availability, royalty_available),
        reviewed_by = 'local', reviewed_at = now()
      where id = $1::bigint`,
     [id, p.status ?? null, p.tier ?? null, p.keep ?? null,
      p.score_project_quality ?? null, p.score_instrument_quality ?? null,
      p.score_confidence ?? null, p.score_actionable ?? null, p.comments ?? null,
-     p.rank ?? null, p.link ?? null],
+     p.rank ?? null, p.link ?? null, p.availability ?? null],
   );
   return { ok: true };
 }
