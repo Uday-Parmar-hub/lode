@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Royalty, Kpis } from "@/lib/queries";
-import { saveReview, aiSearch, type ReviewPatch } from "./actions";
+import { saveReview, aiQuery, type ReviewPatch } from "./actions";
 
 const M: Record<string, string> = {
   Au: "#e8b45a", Ag: "#c9cfd8", Cu: "#cd7d4c", Mo: "#6e8ba6",
@@ -49,28 +49,44 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [dir, setDir] = useState(-1);
   const [view, setView] = useState<"table" | "cards">("table");
   const [selId, setSelId] = useState<string | null>(null);
-  // AI natural-language filter: null = off; a Set of ids restricts the universe to Claude's matches.
+  // AI text-to-SQL. rows mode: aiIds (+ order) restricts the grid to Claude's SELECT. table mode: aiTable
+  // holds an aggregate result rendered in place of the grid. aiInfo drives the banner (+ the generated SQL).
   const [aiIds, setAiIds] = useState<Set<string> | null>(null);
-  const [aiInfo, setAiInfo] = useState<{ interpretation: string; chips: string[]; kind?: "ok" | "nofilter" | "error" } | null>(null);
+  const [aiOrder, setAiOrder] = useState<Map<string, number> | null>(null);
+  const [aiTable, setAiTable] = useState<{ fields: string[]; rows: string[][] } | null>(null);
+  const [aiInfo, setAiInfo] = useState<{ explanation: string; sql: string; kind: "rows" | "table" | "error" } | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const [showSql, setShowSql] = useState(false);
+  const aiActive = aiIds !== null || aiTable !== null || aiInfo !== null;
 
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, v: string) => {
     const n = new Set(set); n.has(v) ? n.delete(v) : n.add(v); setter(n);
   };
 
-  const clearAi = () => { setAiIds(null); setAiInfo(null); };
+  const clearAi = () => { setAiIds(null); setAiOrder(null); setAiTable(null); setAiInfo(null); setShowSql(false); };
 
   const runAi = async () => {
     const nl = q.trim();
     if (!nl) { clearAi(); return; }
-    setAiBusy(true);
+    setAiBusy(true); setShowSql(false);
     try {
-      const res = await aiSearch(nl);
-      if (!res.ok) { setAiIds(null); setAiInfo({ interpretation: res.error || "Search failed — try rephrasing.", chips: [], kind: "error" }); }
-      else if (res.ids === null) { setAiIds(null); setAiInfo({ interpretation: res.interpretation, chips: [], kind: "nofilter" }); }
-      else { setAiIds(new Set(res.ids)); setAiInfo({ interpretation: res.interpretation, chips: res.chips, kind: "ok" }); setSelId(null); }
+      const res = await aiQuery(nl);
+      if (!res.ok) {
+        setAiIds(null); setAiOrder(null); setAiTable(null);
+        setAiInfo({ explanation: res.error || "Search failed — try rephrasing.", sql: res.sql || "", kind: "error" });
+      } else if (res.mode === "table") {
+        setAiIds(null); setAiOrder(null);
+        setAiTable({ fields: res.fields || [], rows: res.rows || [] });
+        setAiInfo({ explanation: res.explanation, sql: res.sql, kind: "table" }); setSelId(null);
+      } else {
+        const ids = res.ids || [];
+        setAiTable(null);
+        setAiIds(new Set(ids)); setAiOrder(new Map(ids.map((id, i) => [id, i])));
+        setAiInfo({ explanation: res.explanation, sql: res.sql, kind: "rows" });
+        setSort("__ai__"); setDir(1); setSelId(null);
+      }
     } catch {
-      setAiIds(null); setAiInfo({ interpretation: "Search failed — try rephrasing.", chips: [], kind: "error" });
+      clearAi(); setAiInfo({ explanation: "Search failed — try rephrasing.", sql: "", kind: "error" });
     } finally { setAiBusy(false); }
   };
 
@@ -92,10 +108,14 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       }
       return true;
     });
-    const sv = (r: Royalty) => { const v = (r as unknown as Record<string, unknown>)[sort]; return typeof v === "number" ? v : (v ?? "").toString().toLowerCase(); };
-    out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
+    if (sort === "__ai__" && aiOrder) {
+      out.sort((a, b) => (aiOrder.get(a.id) ?? 0) - (aiOrder.get(b.id) ?? 0)); // preserve the SQL's ORDER BY
+    } else {
+      const sv = (r: Royalty) => { const v = (r as unknown as Record<string, unknown>)[sort]; return typeof v === "number" ? v : (v ?? "").toString().toLowerCase(); };
+      out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
+    }
     return out;
-  }, [data, q, comm, stage, regime, sort, dir, aiIds]);
+  }, [data, q, comm, stage, regime, sort, dir, aiIds, aiOrder]);
 
   const selIdx = selId ? rows.findIndex((r) => r.id === selId) : -1;
   const sel = selIdx >= 0 ? rows[selIdx] : null;
@@ -128,17 +148,17 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
     <main>
       <div className="cmd">
         <div className="brand"><div className="mark" /><div><div className="word">LODE</div><div className="tag">Royalty Origination · OR Royalties</div></div></div>
-        <div className={`search${aiBusy ? " busy" : ""}${aiIds !== null ? " aion" : ""}`}>
+        <div className={`search${aiBusy ? " busy" : ""}${(aiIds !== null || aiTable) ? " aion" : ""}`}>
           {aiBusy ? <span className="spin" aria-label="Thinking" />
-            : aiIds !== null ? <span className="aidot">✦</span>
+            : (aiIds !== null || aiTable) ? <span className="aidot">✦</span>
             : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>}
           <input
             value={q}
-            onChange={(e) => { setQ(e.target.value); if (aiIds !== null) clearAi(); }}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runAi(); } else if (e.key === "Escape" && aiIds !== null) clearAi(); }}
-            placeholder="Ask in plain English — “producing gold in Nevada, available NSR under 2%”"
+            onChange={(e) => { setQ(e.target.value); if (aiActive) clearAi(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runAi(); } else if (e.key === "Escape" && aiActive) clearAi(); }}
+            placeholder="Ask anything — “producing gold in Nevada or Quebec under 2%”, “top 10 holders by number of royalties”"
           />
-          {q.trim() && !aiBusy && aiIds === null && <kbd className="askhint" onClick={runAi} title="Ask AI (Enter)">✦ Ask&nbsp;↵</kbd>}
+          {q.trim() && !aiBusy && !aiActive && <kbd className="askhint" onClick={runAi} title="Ask AI (Enter)">✦ Ask&nbsp;↵</kbd>}
         </div>
         <div className="kstats">
           <div className="kstat"><div className="n au">{kpis.royalties.toLocaleString()}</div><div className="l">Royalties</div></div>
@@ -149,19 +169,20 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         <div className="live"><span className="d" />LIVE</div>
       </div>
 
-      {aiInfo && (
-        <div className={`aibar${aiInfo.kind === "error" ? " err" : ""}${aiInfo.kind === "nofilter" ? " warn" : ""}`}>
+      {aiInfo && (<>
+        <div className={`aibar${aiInfo.kind === "error" ? " err" : ""}`}>
           <span className="aimark">✦</span>
-          <span className="aitext">{aiInfo.interpretation}</span>
-          {aiInfo.chips.map((c, i) => <span key={i} className="aichip">{c}</span>)}
-          {aiInfo.kind === "nofilter" && <span className="ainote">— showing keyword matches instead</span>}
+          <span className="aitext">{aiInfo.explanation}</span>
+          {aiInfo.kind === "table" && <span className="aichip">aggregate</span>}
           <span style={{ flex: 1 }} />
-          {aiInfo.kind === "ok" && <span className="aicount">{rows.length} match{rows.length === 1 ? "" : "es"}</span>}
+          {aiInfo.kind === "rows" && <span className="aicount">{rows.length} match{rows.length === 1 ? "" : "es"}</span>}
+          {aiInfo.sql && <button className="aiclear" onClick={() => setShowSql((s) => !s)}>{showSql ? "hide SQL" : "‹ › SQL"}</button>}
           <button className="aiclear" onClick={clearAi} title="Clear AI search (Esc)"><span aria-hidden>✕</span> Clear</button>
         </div>
-      )}
+        {showSql && aiInfo.sql && <pre className="aisql">{aiInfo.sql}</pre>}
+      </>)}
 
-      <div className="toolbar">
+      {!aiTable && <div className="toolbar">
         <span className="glabel">Metal</span>
         {METALS.map((m) => <Chip key={m} label={m} color={M[m]} on={comm.has(m)} onClick={() => toggle(comm, setComm, m)} />)}
         <span className="glabel" style={{ marginLeft: 6 }}>Stage</span>
@@ -175,9 +196,23 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
           </div>}
           <span className="count"><b>{rows.length}</b> / {data.length}</span>
         </div>
-      </div>
+      </div>}
 
-      {sel ? (
+      {aiTable ? (
+        <div className="respanel">
+          <div className="reswrap">
+            <table className="restable">
+              <thead><tr>{aiTable.fields.map((f, i) => <th key={i}>{f}</th>)}</tr></thead>
+              <tbody>
+                {aiTable.rows.map((row, ri) => (
+                  <tr key={ri}>{row.map((c, ci) => <td key={ci} className={ci === 0 ? "c0" : ""}>{c}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+            {!aiTable.rows.length && <div className="resempty">No results.</div>}
+          </div>
+        </div>
+      ) : sel ? (
         <div className="split">
           <div className="rail">
             {rows.map((r) => (

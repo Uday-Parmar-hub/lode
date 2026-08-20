@@ -260,6 +260,20 @@ tbody tr:hover .src{color:var(--gold-hi)}
 .aibar .aiclear{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;
   color:var(--text-2);background:#161310;border:1px solid var(--line-2);border-radius:8px;padding:5px 11px;transition:.15s;flex:none}
 .aibar .aiclear:hover{color:#f08a74;border-color:rgba(224,113,90,.5);background:rgba(224,113,90,.08)}
+/* the generated SQL (transparency) */
+.aisql{margin:2px 24px 6px;padding:11px 14px;border:1px solid var(--line-2);border-left:3px solid var(--cyan);border-radius:9px;
+  background:#0b0f0e;color:#bfe9e0;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.6;white-space:pre-wrap;overflow-x:auto}
+/* aggregate result table (text-to-SQL "table" mode) */
+.respanel{padding:18px 24px 60px}
+.reswrap{border:1px solid var(--line);border-radius:14px;overflow:auto;background:linear-gradient(180deg,#151210,#0e0c0a)}
+.restable{width:100%;border-collapse:collapse;font-size:13.5px}
+.restable th{position:sticky;top:0;background:#0d0b09;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;
+  font-weight:600;color:var(--gold-deep);text-transform:uppercase;letter-spacing:.07em;padding:12px 16px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+.restable td{padding:10px 16px;border-bottom:1px solid var(--line);white-space:nowrap;font-family:'JetBrains Mono',monospace;color:var(--text-2)}
+.restable td.c0{font-family:'Space Grotesk',sans-serif;font-weight:600;color:var(--text)}
+.restable tr:last-child td{border-bottom:0}
+.restable tbody tr:hover td{background:rgba(245,178,62,.05)}
+.resempty{padding:36px;text-align:center;color:var(--text-3)}
 /* accessible focus ring (quality floor) */
 button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible,.chip:focus-visible,tr:focus-visible,th:focus-visible{
   outline:2px solid var(--cyan);outline-offset:1px;border-radius:6px}

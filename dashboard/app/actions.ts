@@ -1,7 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { query } from "@/lib/db";
+import { query, queryReadOnly } from "@/lib/db";
 
 export interface ReviewPatch {
   status?: string; // review_status enum
@@ -35,200 +35,164 @@ export async function saveReview(id: string, p: ReviewPatch): Promise<{ ok: bool
   return { ok: true };
 }
 
-// ── AI natural-language filter ────────────────────────────────────────────────
-// The analyst types plain English ("producing gold in Nevada, available NSR under 2%").
-// Claude turns it into a *whitelisted, structured* filter spec; we compile that spec to a
-// parameterized read-only SELECT. The model's text never reaches SQL directly — only
-// (field, op) pairs looked up in the tables below, and values passed as bound parameters.
+// ── AI search: natural language → SQL ─────────────────────────────────────────
+// The analyst asks in plain English ("producing gold in Nevada under 2%", "top 10 holders by number
+// of royalties", "average NSR by jurisdiction"). Claude writes ONE read-only SELECT over the royalties
+// table. Safety is layered, not a single check: it runs as the SELECT-only `lode_ro` role inside a
+// read-only transaction with a statement timeout (see lib/db.ts), AND the SQL is validated here to be a
+// single SELECT with no data-modifying keywords. The model's SQL is shown to the user for transparency.
 
-type FieldKind = "text" | "commodity" | "num" | "avail" | "status" | "bool" | "present";
+const SCHEMA_DOC = `Table: royalties  (one row per third-party royalty found on a mining asset)
 
-// field name (what Claude may emit) -> real column + how to compile it + a human label
-const FIELDS: Record<string, { col: string; kind: FieldKind; label: string }> = {
-  operator: { col: "operator", kind: "text", label: "operator" },
-  jurisdiction: { col: "jurisdiction", kind: "text", label: "jurisdiction" },
-  holder: { col: "holder", kind: "text", label: "held by" },
-  project: { col: "project_name", kind: "text", label: "asset" },
-  stage: { col: "stage", kind: "text", label: "stage" },
-  royalty_type: { col: "royalty_type", kind: "text", label: "type" },
-  regime: { col: "regime", kind: "text", label: "regime" },
-  commodity: { col: "commodity", kind: "commodity", label: "commodity" },
-  rate_pct: { col: "rate_pct", kind: "num", label: "rate" },
-  royalty_available: { col: "royalty_available", kind: "avail", label: "availability" },
-  status: { col: "status", kind: "status", label: "review status" },
-  quote_verified: { col: "quote_verified", kind: "bool", label: "source-verified" },
-  partial_coverage: { col: "partial_coverage", kind: "bool", label: "partial coverage" },
-  rofr: { col: "rofr", kind: "bool", label: "ROFR" },
-  buyback: { col: "buyback", kind: "present", label: "buyback" },
-  step_down: { col: "step_down", kind: "present", label: "step-down" },
-  production_cap: { col: "production_cap", kind: "present", label: "production cap" },
-  production_threshold: { col: "production_threshold", kind: "present", label: "production threshold" },
-  advance_payments: { col: "advance_payments", kind: "present", label: "advance payments" },
-};
-const OPS = ["contains", "eq", "lt", "lte", "gt", "gte", "has", "is", "present", "absent"] as const;
-const AVAIL = ["available", "partial", "held", "unknown"];
-const STATUS = ["pending", "validated", "rejected", "needs_info"];
-const NUM_OP: Record<string, string> = { lt: "<", lte: "<=", gt: ">", gte: ">=", eq: "=" };
+Columns:
+  id                bigint        -- row id
+  is_primary        boolean       -- TRUE = the canonical, de-duplicated row. ALWAYS filter "where is_primary"
+                                     unless the user explicitly asks about all source reports / duplicates.
+  dup_key           text          -- dedup group id; count(*) grouped by dup_key = number of source reports for a royalty
+  project_name      text          -- asset / project name (free text; use ILIKE)
+  operator          text          -- company operating the asset (free text; use ILIKE)
+  commodity         text[]        -- metal SYMBOLS: Au(gold) Ag(silver) Cu(copper) Ni(nickel) Zn(zinc) Mo(moly) PGE.
+                                     Filter with: commodity && array['Au']  or  'Au' = any(commodity)
+  jurisdiction      text          -- country / state / province (free text; use ILIKE). Location questions -> here.
+  stage             text          -- exploration | PEA | PFS | FS | development | producing (free text; use ILIKE)
+  est_startup       text
+  royalty_type      text          -- NSR | NPI | GSR/GROSS | metal stream | ... (free text; use ILIKE)
+  rate              text          -- rate as stated, e.g. "2.00%", "0.7-1.3%", "US$5/t"
+  rate_pct          numeric       -- parsed leading percent (2 means 2%); NULL for non-% rates. Use for < > ranges.
+  holder            text          -- the counterparty entitled to the royalty (free text; use ILIKE)
+  holder_note       text
+  royalty_available availability  -- enum: 'available' | 'partial' | 'held' | 'unknown'
+  extract_confidence smallint     -- 1..5
+  info_available    text
+  partial_coverage  boolean
+  advance_payments  text          -- NULL if none (IS NOT NULL = has advance payments); same idea for the next four:
+  production_threshold text
+  production_cap    text
+  buyback           text
+  step_down         text
+  rofr              boolean
+  features_note     text
+  regime            text          -- 'NI 43-101' | 'S-K 1300' | 'JORC'
+  source_label      text
+  source_url        text
+  source_date       date
+  source_quote      text          -- the verbatim sentence from the report (use ILIKE for concept/full-text search)
+  quote_verified    boolean
+  status            review_status  -- enum: 'pending' | 'validated' | 'rejected' | 'needs_info'
+  tier smallint, rank int, keep boolean
+  score_project_quality smallint, score_instrument_quality smallint, score_confidence smallint, score_actionable smallint
+  comments text, link text
+  created_at timestamptz, updated_at timestamptz`;
 
-interface Condition { field: string; op: string; value: string }
+const SYSTEM = `You translate a mining-royalty analyst's plain-English request into ONE PostgreSQL query over the
+single table below. Output only the query and a one-sentence explanation.
 
-// One condition -> a bound SQL fragment + a human chip, or null if it doesn't validate.
-function buildFrag(c: Condition, params: unknown[]): { sql: string; chip: string } | null {
-  const f = FIELDS[c.field];
-  if (!f) return null;
-  const v = (c.value ?? "").trim();
-  const bind = (val: unknown) => { params.push(val); return `$${params.length}`; };
-  switch (f.kind) {
-    case "text": {
-      if (!v) return null;
-      if (c.op === "eq") return { sql: `lower(${f.col}) = lower(${bind(v)})`, chip: `${f.label}: ${v}` };
-      return { sql: `${f.col} ILIKE ${bind(`%${v}%`)}`, chip: `${f.label}: ${v}` };
-    }
-    case "commodity": {
-      const arr = v.split(/[,/&]|\bor\b|\band\b/).map((s) => s.trim()).filter(Boolean);
-      if (!arr.length) return null;
-      return { sql: `commodity && ${bind(arr)}::text[]`, chip: `commodity: ${arr.join("/")}` };
-    }
-    case "num": {
-      const n = parseFloat(v.replace("%", ""));
-      if (Number.isNaN(n)) return null;
-      const opsql = NUM_OP[c.op] ?? "=";
-      return { sql: `rate_pct ${opsql} ${bind(n)}`, chip: `rate ${opsql} ${n}%` };
-    }
-    case "avail": {
-      const val = v.toLowerCase();
-      if (!AVAIL.includes(val)) return null;
-      return { sql: `royalty_available = ${bind(val)}::availability`, chip: `availability: ${val}` };
-    }
-    case "status": {
-      const val = v.toLowerCase();
-      if (!STATUS.includes(val)) return null;
-      return { sql: `status = ${bind(val)}::review_status`, chip: `status: ${val}` };
-    }
-    case "bool": {
-      const tv = ["true", "yes", "1"].includes(v.toLowerCase());
-      return { sql: `${f.col} = ${bind(tv)}`, chip: tv ? f.label : `not ${f.label}` };
-    }
-    case "present": {
-      if (c.op === "absent") return { sql: `${f.col} IS NULL`, chip: `no ${f.label}` };
-      return { sql: `${f.col} IS NOT NULL`, chip: `has ${f.label}` };
-    }
-  }
-}
+${SCHEMA_DOC}
 
-const AI_SCHEMA = {
+Rules:
+- Exactly ONE read-only SELECT (or WITH ... SELECT). Never write, modify, or reference any other table. No semicolons.
+- Default to the canonical de-duplicated view: include "is_primary" in the WHERE clause unless the user explicitly
+  asks about all source reports, duplicates, or corroboration counts.
+- Choose a mode:
+  * "rows"  — the user wants to SEE / list / filter / find royalties. The SQL MUST select ONLY the id:
+              select id from royalties where <...> [order by <...>] [limit <n>]
+              (order by / limit are honored in the grid; cap large lists with a limit.)
+  * "table" — the user asks a question answered by aggregation: counts, sums, averages, min/max, "how many",
+              "per / by <x>", "top N <groups>", distributions. Return the answer columns directly, e.g.
+              select holder, count(*) as royalties from royalties where is_primary group by holder order by royalties desc limit 20
+- commodity is an array of metal symbols — convert metal names to symbols (gold->Au, copper->Cu, ...).
+- rate_pct is a number (2 = 2%). "under 2%" -> rate_pct < 2. Use it for ranges; use rate only to display text.
+- jurisdiction, operator, holder, project_name, stage, royalty_type are free text -> use ILIKE '%...%'.
+- Use OR / NOT / ranges / ORDER BY / GROUP BY / aggregates freely. Always add a LIMIT for non-aggregate lists.
+- "corroborated by the most reports" etc. -> group by dup_key or use a subquery counting rows per dup_key.
+- explanation: one plain sentence describing what the query returns.`;
+
+const SQL_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["interpretation", "conditions"],
+  required: ["mode", "sql", "explanation"],
   properties: {
-    interpretation: {
-      type: "string",
-      description: "One short sentence restating what you understood the user to be asking for.",
-    },
-    conditions: {
-      type: "array",
-      description: "The filters to apply, combined with AND. Empty if the request cannot be mapped to the fields below.",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["field", "op", "value"],
-        properties: {
-          field: { type: "string", enum: Object.keys(FIELDS) },
-          op: { type: "string", enum: [...OPS] },
-          value: { type: "string", description: "Bound as a parameter. '' for present/absent ops." },
-        },
-      },
-    },
+    mode: { type: "string", enum: ["rows", "table"], description: "rows = list royalties in the grid; table = an aggregate answer" },
+    sql: { type: "string", description: "one read-only PostgreSQL SELECT over the royalties table" },
+    explanation: { type: "string", description: "one sentence: what the query returns" },
   },
 };
 
-const AI_SYSTEM = `You translate a mining-royalty analyst's plain-English request into a structured filter over a database of third-party royalties found in technical reports. Return ONLY the filter spec.
+// SELECT-only gate (belt to the read-only role's braces): single statement, starts with select/with,
+// no data-modifying or session-changing keywords, no comment markers that could hide a payload.
+const FORBIDDEN =
+  /\b(insert|update|delete|drop|alter|truncate|grant|revoke|create|copy|vacuum|analyze|reindex|cluster|comment|call|do|merge|refresh|listen|notify|lock|set|reset|begin|commit|rollback|savepoint|prepare|execute|discard|import|dblink|pg_sleep|pg_read_file|pg_ls_dir|lo_import|lo_export|pg_terminate|pg_cancel)\b/i;
 
-Each row is one royalty on a mining asset. Fields you may filter on (use these exact field names and ops):
+function validateSelect(sql: string): { ok: true; sql: string } | { ok: false; error: string } {
+  const raw = sql.trim().replace(/;+\s*$/, "").trim();
+  if (!raw) return { ok: false, error: "empty query" };
+  if (raw.includes(";")) return { ok: false, error: "only a single statement is allowed" };
+  if (raw.includes("--") || raw.includes("/*")) return { ok: false, error: "comments are not allowed" };
+  if (!/^(with|select)\b/i.test(raw)) return { ok: false, error: "only SELECT queries are allowed" };
+  if (FORBIDDEN.test(raw)) return { ok: false, error: "query contains a disallowed keyword" };
+  return { ok: true, sql: raw };
+}
 
-TEXT (op "contains" for partial match, "eq" for exact):
-- operator: the company operating the asset
-- jurisdiction: country / state / province (e.g. Nevada, Canada, Australia, Quebec)
-- holder: the party that owns/receives the royalty (the counterparty)
-- project: the asset/project name
-- stage: exploration | PEA | PFS | FS | development | producing (use "contains")
-- royalty_type: NSR | GSR | NPI | GVR | stream
-- regime: NI 43-101 | S-K 1300 | JORC
+function cell(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (Array.isArray(v)) return v.join(", ");
+  return String(v);
+}
 
-commodity (op "has"): value is one or more metal SYMBOLS. Convert names to symbols:
-gold=Au, silver=Ag, copper=Cu, nickel=Ni, zinc=Zn, molybdenum=Mo, platinum-group=PGE.
-Multiple metals -> comma-separate them in one condition (e.g. "Au,Cu").
-
-rate_pct (ops lt/lte/gt/gte/eq): the royalty percentage as a number. "under 2%" -> op "lt" value "2". "at least 1.5%" -> op "gte" value "1.5".
-
-royalty_available (op "is", value one of available|partial|held|unknown): whether the royalty can be acquired. "available to buy / acquirable / for sale" -> "available".
-
-status (op "is", value one of pending|validated|rejected|needs_info): the analyst review status.
-
-BOOLEAN (op "is", value "true" or "false"):
-- quote_verified: the royalty is verified against the source sentence
-- partial_coverage: the royalty burdens only part of the property
-- rofr: a right of first refusal / offer is attached
-
-CLAUSE PRESENCE (op "present" or "absent", value ""):
-- buyback: a buy-down / buy-back clause exists
-- step_down: a sliding-scale / step-down structure exists
-- production_cap: the royalty is capped
-- production_threshold: payable only above a production threshold
-- advance_payments: advance minimum royalty payments exist
-
-Rules:
-- Only use the fields and ops above. Combine conditions with AND.
-- Convert metal names to symbols; put percentage thresholds on rate_pct.
-- If part of the request maps and part doesn't, include what maps and note the rest in interpretation.
-- If nothing maps, return an empty conditions array and explain in interpretation.`;
-
-export interface AiSearchResult {
+export interface AiQueryResult {
   ok: boolean;
-  ids: string[] | null; // null = no structured filter produced (caller falls back to keyword)
-  interpretation: string;
-  chips: string[];
-  count: number;
+  mode: "rows" | "table";
+  explanation: string;
+  sql: string;
+  ids?: string[];          // rows mode: matching ids, in the query's order
+  fields?: string[];       // table mode: column names
+  rows?: string[][];       // table mode: display cells, aligned to fields
   error?: string;
 }
 
-/** Turn a natural-language query into matching royalty ids via Claude -> whitelisted SQL. Read-only. */
-export async function aiSearch(nl: string): Promise<AiSearchResult> {
-  const q = (nl ?? "").trim().slice(0, 400);
-  if (!q) return { ok: true, ids: null, interpretation: "", chips: [], count: 0 };
+/** Natural language -> one read-only SELECT (via Claude) -> matching rows for the grid, or an aggregate table. */
+export async function aiQuery(nl: string): Promise<AiQueryResult> {
+  const q = (nl ?? "").trim().slice(0, 500);
+  const empty: AiQueryResult = { ok: true, mode: "rows", explanation: "", sql: "", ids: [] };
+  if (!q) return empty;
 
-  let spec: { interpretation?: string; conditions?: Condition[] };
+  let spec: { mode?: string; sql?: string; explanation?: string };
   try {
     const client = new Anthropic();
-    // Structured output (JSON schema) — a small, literal extraction; low effort keeps the box snappy.
     const res = (await client.messages.create({
       model: "claude-opus-5",
-      max_tokens: 1024,
-      output_config: { effort: "low", format: { type: "json_schema", schema: AI_SCHEMA } },
-      system: AI_SYSTEM,
+      max_tokens: 1200,
+      output_config: { effort: "low", format: { type: "json_schema", schema: SQL_SCHEMA } },
+      system: SYSTEM,
       messages: [{ role: "user", content: q }],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)) as { content: { type: string; text?: string }[] };
     const text = res.content.find((b) => b.type === "text")?.text ?? "{}";
     spec = JSON.parse(text);
   } catch (e) {
-    return { ok: false, ids: null, interpretation: "", chips: [], count: 0, error: (e as Error).message ?? "AI request failed" };
+    return { ok: false, mode: "rows", explanation: "", sql: "", error: (e as Error).message || "AI request failed" };
   }
 
-  const interpretation = (spec.interpretation ?? "").trim();
-  const conds = Array.isArray(spec.conditions) ? spec.conditions : [];
-  const params: unknown[] = [];
-  const frags: string[] = [];
-  const chips: string[] = [];
-  for (const c of conds) {
-    const built = buildFrag(c, params);
-    if (built) { frags.push(built.sql); chips.push(built.chip); }
-  }
-  if (!frags.length) {
-    return { ok: true, ids: null, interpretation: interpretation || `Couldn’t turn “${q}” into filters.`, chips: [], count: 0 };
+  const explanation = (spec.explanation ?? "").trim();
+  const mode = spec.mode === "table" ? "table" : "rows";
+  const check = validateSelect(spec.sql ?? "");
+  if (!check.ok) {
+    return { ok: false, mode, explanation, sql: (spec.sql ?? "").trim(), error: check.error };
   }
 
-  const sql = `select id::text as id from royalties where is_primary and ${frags.join(" and ")} limit 3000`;
-  const rows = await query<{ id: string }>(sql, params);
-  return { ok: true, ids: rows.map((r) => r.id), interpretation, chips, count: rows.length };
+  let out: { fields: string[]; rows: Record<string, unknown>[] };
+  try {
+    out = await queryReadOnly(check.sql);
+  } catch (e) {
+    const msg = (e as Error).message || "query failed";
+    return { ok: false, mode, explanation, sql: check.sql, error: msg.replace(/^error:\s*/i, "") };
+  }
+
+  if (mode === "rows") {
+    const ids = out.rows.slice(0, 3000).map((r) => String(r.id ?? r[out.fields[0]]));
+    return { ok: true, mode: "rows", explanation, sql: check.sql, ids };
+  }
+  const rows = out.rows.slice(0, 200).map((r) => out.fields.map((f) => cell(r[f])));
+  return { ok: true, mode: "table", explanation, sql: check.sql, fields: out.fields, rows };
 }
