@@ -27,9 +27,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from techreport import config, db  # noqa: E402
 
-# Semantic-merge ledger from scripts/resolve_holders.py (LLM-proposed, human-reviewable). Optional:
-# without it, dedupe.py is purely the deterministic pass 1.
+# Semantic ledgers (LLM-proposed, human-reviewable). Both optional — without them dedupe.py is the
+# pure deterministic pass 1. holder_merges = pass 2 (resolve_holders.py); asset_aliases = pass 2b
+# (resolve_assets.py, asset renames applied when building the key).
 LEDGER = config.ROOT / "data" / "holder_merges.json"
+ASSET_LEDGER = config.ROOT / "data" / "asset_aliases.json"
 
 # accented -> ascii fold (Kandiolé -> kandiole, etc.)
 _ACC = "'áàâäãéèêëíìîïóòôöõúùûüçñ','aaaaaeeeeiiiiooooouuuucn'"
@@ -69,7 +71,27 @@ _NHOLD = (
     r"'[^a-z0-9]+','','g')"
 )
 
-DUPKEY_SQL = f"({_NASSET}||'|'||{_CTYPE}||'|'||{_RKEY}||'|'||{_NHOLD})"
+# pass 2b: remap an asset's normalized key to its group's canonical key (via the asset_alias temp table),
+# so a renamed asset's royalties share the key with the canonical name's. No ledger -> empty table -> no-op.
+_ASSET = f"coalesce((select aa.to_key from asset_alias aa where aa.from_key = {_NASSET}), {_NASSET})"
+DUPKEY_SQL = f"({_ASSET}||'|'||{_CTYPE}||'|'||{_RKEY}||'|'||{_NHOLD})"
+
+
+def load_asset_aliases(cur) -> int:
+    """Stage the asset-rename ledger into a temp table used by DUPKEY_SQL. Returns member rows mapped."""
+    cur.execute("create temp table asset_alias (from_key text primary key, to_key text) on commit drop")
+    if not ASSET_LEDGER.exists():
+        return 0
+    groups = json.loads(ASSET_LEDGER.read_text(encoding="utf-8"))
+    n = 0
+    for g in groups:
+        ck = g["canonical_key"]
+        for k in g["member_keys"]:
+            if k == ck:
+                continue
+            cur.execute("insert into asset_alias(from_key,to_key) values (%s,%s) on conflict do nothing", (k, ck))
+            n += 1
+    return n
 
 
 def apply_ledger(cur) -> int:
@@ -108,6 +130,7 @@ def main() -> None:
         # bookkeeping updates must not bump updated_at ("Date Modified") — pause the touch trigger
         cur.execute("alter table royalties disable trigger trg_roy_touch")
         try:
+            asset_merges = load_asset_aliases(cur)  # pass 2b: stage asset renames (no-op if absent)
             cur.execute(f"update royalties set dup_key = {DUPKEY_SQL}")
             cur.execute("create index if not exists idx_roy_dupkey on royalties (dup_key)")
             merges = apply_ledger(cur)  # semantic pass 2 (no-op if the ledger is absent)
@@ -133,8 +156,13 @@ def main() -> None:
         after = cur.fetchone()[0]
         conn.commit()
 
-    ledger_note = f" (incl. {merges} semantic holder-merges)" if merges else " (deterministic only; no ledger)"
-    print(f"rows: {total}   primary: {before} -> {after}   (collapsed {before - after} duplicates){ledger_note}")
+    parts = []
+    if asset_merges:
+        parts.append(f"{asset_merges} asset-rename aliases")
+    if merges:
+        parts.append(f"{merges} holder-merges")
+    note = f" (incl. {', '.join(parts)})" if parts else " (deterministic only; no ledgers)"
+    print(f"rows: {total}   primary: {before} -> {after}   (collapsed {before - after} duplicates){note}")
 
 
 if __name__ == "__main__":
