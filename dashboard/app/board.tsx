@@ -25,9 +25,9 @@ function featureList(r: Royalty): { k: string; v: string }[] {
 }
 
 const COLS: { k: keyof Royalty | "features"; t: string; w: number; nosort?: boolean }[] = [
-  { k: "asset", t: "Asset", w: 15 }, { k: "operator", t: "Operator", w: 12 }, { k: "juris", t: "Jurisdiction", w: 8 },
+  { k: "asset", t: "Property", w: 15 }, { k: "operator", t: "Operator", w: 12 }, { k: "juris", t: "Jurisdiction", w: 8 },
   { k: "commodity", t: "Commodity", w: 9, nosort: true }, { k: "stage", t: "Stage", w: 7 },
-  { k: "rate_pct", t: "Royalty", w: 9 }, { k: "type", t: "Type", w: 6 }, { k: "holder", t: "Held by", w: 14 },
+  { k: "rate_pct", t: "Rate", w: 9 }, { k: "type", t: "Type", w: 6 }, { k: "holder", t: "Held by", w: 14 },
   { k: "features", t: "Features", w: 12, nosort: true }, { k: "source_label", t: "Source", w: 8 },
 ];
 
@@ -43,7 +43,6 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [data, setData] = useState<Royalty[]>(royalties);
   const [q, setQ] = useState("");
   const [comm, setComm] = useState<Set<string>>(new Set());
-  const [stage, setStage] = useState<Set<string>>(new Set());
   const [regime, setRegime] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<string>("rate_pct");
   const [dir, setDir] = useState(-1);
@@ -102,8 +101,12 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
     const words = aiMode || sig.length > 2 ? [] : sig;
     const out = data.filter((r) => {
       if (aiMode && !aiIds!.has(r.id)) return false;
-      if (comm.size && !(r.commodity || []).some((c) => comm.has(c))) return false;
-      if (stage.size && !(r.stage && [...stage].some((s) => r.stage!.toLowerCase().includes(s.toLowerCase())))) return false;
+      if (comm.size) {
+        const cs = r.commodity || [];
+        // "Other" matches any metal not in the standard set (U, Li, V, graphite, REE, …)
+        const hit = cs.some((c) => comm.has(c)) || (comm.has("Other") && cs.some((c) => !METALS.includes(c)));
+        if (!hit) return false;
+      }
       if (regime.size && !(r.regime && regime.has(r.regime))) return false;
       if (words.length) {
         const blob = `${r.asset} ${r.operator ?? ""} ${r.juris ?? ""} ${r.holder ?? ""} ${(r.commodity || []).join(" ")} ${r.stage ?? ""} ${r.type ?? ""} ${r.rate ?? ""} ${r.features_note ?? ""}`.toLowerCase();
@@ -118,7 +121,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
     }
     return out;
-  }, [data, q, comm, stage, regime, sort, dir, aiIds, aiOrder]);
+  }, [data, q, comm, regime, sort, dir, aiIds, aiOrder]);
 
   const selIdx = selId ? rows.findIndex((r) => r.id === selId) : -1;
   const sel = selIdx >= 0 ? rows[selIdx] : null;
@@ -159,12 +162,12 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
             value={q}
             onChange={(e) => { setQ(e.target.value); if (aiActive) clearAi(); }}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runAi(); } else if (e.key === "Escape" && aiActive) clearAi(); }}
-            placeholder="Ask anything — “producing gold in Nevada or Quebec under 2%”, “top 10 holders by number of royalties”"
+            placeholder="Ask anything — “producing gold in Nevada or Quebec under 2%”, “top 10 holders by number of instruments”"
           />
           {q.trim() && !aiBusy && !aiActive && <kbd className="askhint" onClick={runAi} title="Ask AI (Enter)">✦ Ask&nbsp;↵</kbd>}
         </div>
         <div className="kstats">
-          <div className="kstat"><div className="n au">{kpis.royalties.toLocaleString()}</div><div className="l">Royalties</div></div>
+          <div className="kstat"><div className="n au">{kpis.royalties.toLocaleString()}</div><div className="l">Instruments</div></div>
           <div className="kstat"><div className="n">{kpis.assets}</div><div className="l">Assets</div></div>
           <div className="kstat"><div className="n">{kpis.pending}</div><div className="l">Pending</div></div>
           <div className="kstat"><div className="n">{kpis.verified_pct}%</div><div className="l">Verified</div></div>
@@ -188,8 +191,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       {!aiTable && <div className="toolbar">
         <span className="glabel">Metal</span>
         {METALS.map((m) => <Chip key={m} label={m} color={M[m]} on={comm.has(m)} onClick={() => toggle(comm, setComm, m)} />)}
-        <span className="glabel" style={{ marginLeft: 6 }}>Stage</span>
-        {["Producing", "Development", "Resource", "Exploration"].map((s) => <Chip key={s} label={s} on={stage.has(s)} onClick={() => toggle(stage, setStage, s)} />)}
+        <Chip label="Other" color="#8a8172" on={comm.has("Other")} onClick={() => toggle(comm, setComm, "Other")} />
         <span className="glabel" style={{ marginLeft: 6 }}>Regime</span>
         {REGIMES.map((r) => <Chip key={r} label={r} on={regime.has(r)} onClick={() => toggle(regime, setRegime, r)} />)}
         <div className="rt">
@@ -270,7 +272,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
             </div>); })}
         </div>
       )}
-      <div className="mockflag">LIVE DB · {kpis.royalties.toLocaleString()} royalties · {kpis.pending} pending review</div>
+      <div className="mockflag">LIVE DB · {kpis.royalties.toLocaleString()} instruments · {kpis.pending} pending review</div>
     </main>
   );
 }
@@ -325,35 +327,35 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       <div className="dtitle">{r.asset}</div>
       <div className="dmeta">{r.operator}</div>
 
-      <div className="sec">Royalty</div>
+      <div className="sec">Instrument</div>
       <div className="dgrid">
         <Cell k="Rate" v={`${r.rate ?? "—"} ${r.type ?? ""}`} gold />
         <Cell k="Held by" v={<>{r.holder ?? "—"}{r.holder_note && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.holder_note}</div>}</>} />
-        <Cell k="Royalty available" v={<span className={`avail-${cur("availability")}`}>{cap((cur("availability") as string) || "unknown")}</span>} />
+        <Cell k="Available" v={<span className={`avail-${cur("availability")}`}>{cap((cur("availability") as string) || "unknown")}</span>} />
         <Cell k="Confidence" v={r.conf != null ? `${r.conf} / 5` : "—"} />
         <Cell k="Commodity" v={(r.commodity || []).join(" · ")} />
         <Cell k="Regime" v={r.regime} />
       </div>
 
-      <div className="sec">Asset</div>
+      <div className="sec">Property</div>
       <div className="dgrid">
         <Cell k="Jurisdiction" v={r.juris} />
         <Cell k="Stage / est. start" v={[r.stage, r.est_startup].filter(Boolean).join(" · ")} />
         <Cell k="S&P ID" v={r.sp_id} />
-        <Cell k="Royalty granted" v={r.royalty_created} />
+        <Cell k="Granted" v={r.royalty_created} />
         <Cell k="Info available" v={r.info_available} />
       </div>
 
-      <div className="sec">Verbatim from the technical report</div>
+      <div className="sec">Instrument description — from source</div>
       <div className="assay">
         <div className="q">“{r.quote}”</div>
         <div className="cite">{r.source_label} &nbsp;·&nbsp; {r.quote_verified ? <span className="verified">✓ source-verified</span> : <span>unverified</span>}{r.source_url && (<> &nbsp;·&nbsp; <a href={r.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--gold-hi)" }}>open ↗</a></>)}{r.report_count > 1 && (<> &nbsp;·&nbsp; <span className="repcount">corroborated by {r.report_count} reports{r.report_from && r.report_to ? ` (${r.report_from === r.report_to ? r.report_from : `${r.report_from}–${r.report_to}`})` : ""}</span></>)}</div>
       </div>
 
-      <div className="sec">Royalty features</div>
+      <div className="sec">Instrument features</div>
       {feats.length ? (
         <div className="feat">{feats.map((f, i) => <div key={i} className="frow"><span className="fk">{f.k}</span><span className="fv">{f.v}</span></div>)}</div>
-      ) : <div style={{ color: "var(--text-3)", fontSize: 13 }}>None disclosed — a straightforward royalty.</div>}
+      ) : <div style={{ color: "var(--text-3)", fontSize: 13 }}>None disclosed — a straightforward instrument.</div>}
       {r.features_note && <div className="fnote"><span className="fk">also check</span> {r.features_note}</div>}
 
       <div className="sec">Review · analyst</div>
