@@ -76,8 +76,8 @@ td.asset .vein{position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radi
 td.asset .nm{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14.5px;padding-left:8px}
 .op,.juris{color:var(--text-2);font-size:13px}
 /* clamp long real-world values so a paragraph-length rate/holder can't balloon a row (full text is in the drawer) */
-.op,.juris,.holder .h,.rate .v,td.asset .nm,.type{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
-.op,.juris,.holder .h,td.asset .nm,.type{-webkit-line-clamp:2}
+.op .cl,.juris .cl,.holder .h,.rate .v,td.asset .nm,.type .cl{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.op .cl,.juris .cl,.holder .h,td.asset .nm,.type .cl{-webkit-line-clamp:2}
 .rate .v{-webkit-line-clamp:2}
 .comm{display:flex;gap:4px;flex-wrap:wrap}
 .comm span{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;padding:2px 6px;border-radius:5px;background:var(--cc,#222);color:#12100c}

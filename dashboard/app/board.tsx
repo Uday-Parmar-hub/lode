@@ -246,12 +246,12 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
               {rows.map((r) => { const vein = M[(r.commodity || [])[0]] || "#5f584c"; const feats = featureList(r); return (
                 <tr key={r.id} onClick={() => setSelId(r.id)}>
                   <td className="asset" style={{ ["--vein" as string]: vein }}><span className="vein" /><span className="nm">{r.asset}</span></td>
-                  <td className="op">{r.operator}</td>
-                  <td className="juris">{r.juris}</td>
+                  <td className="op"><span className="cl">{r.operator}</span></td>
+                  <td className="juris"><span className="cl">{r.juris}</span></td>
                   <td><Commodity c={r.commodity} /></td>
                   <td>{r.stage && <span className="stage">{r.stage}</span>}</td>
                   <td className="rate"><div className="v">{r.rate ?? "—"}</div></td>
-                  <td className="type">{r.type}</td>
+                  <td className="type"><span className="cl">{r.type}</span></td>
                   <td className="holder"><div className="h">{r.holder ?? "—"}</div>{r.holder_note && <div className="hn">{r.holder_note}</div>}</td>
                   <td><div className="fchips">{feats.slice(0, 3).map((f, i) => <span key={i} className="fchip">{f.k}</span>)}{!feats.length && <span style={{ color: "var(--text-3)" }}>—</span>}</div></td>
                   <td className="src">{r.source_label} {r.quote_verified && <span className="verified">✓</span>}{r.report_count > 1 && <span className="repbadge" title={`Corroborated by ${r.report_count} source reports`}>×{r.report_count}</span>}</td>
