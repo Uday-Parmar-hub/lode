@@ -42,6 +42,7 @@ CREATE TABLE royalties (
     rate_pct                NUMERIC,              -- parsed leading % for sort/filter (NULL if non-%)
     holder                  TEXT,                 -- Counterparties — the party entitled (the seller)
     holder_note             TEXT,                 -- e.g. "via Billiton Ecuador B.V. (now BHP)"
+    competitor_holder       TEXT,                 -- matched OR competitor if the current holder is one (derived; NULL otherwise)
     royalty_available       availability NOT NULL DEFAULT 'unknown',
     extract_confidence      SMALLINT,             -- model confidence 1-5 (Royalty Details "Confidence")
     royalty_created         TEXT,                 -- Matt "Created" — granted date/context (semantics TBD w/ Matt)
