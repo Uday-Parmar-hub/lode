@@ -7,6 +7,10 @@ export interface Royalty {
   asset: string;
   operator: string | null;
   juris: string | null;
+  country: string | null;
+  state_province: string | null;
+  continent: string | null;
+  jurisdiction_tier: number | null;
   commodity: string[];
   stage: string | null;
   rate: string | null;
@@ -56,7 +60,8 @@ export interface Royalty {
   link: string | null;
 }
 
-const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdiction as juris, commodity,
+const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdiction as juris,
+  country, state_province, continent, jurisdiction_tier, commodity,
   stage, est_startup, rate, rate_pct::float8 as rate_pct, royalty_type as type, holder, holder_note,
   royalty_available::text as avail, extract_confidence as conf, royalty_created, info_available,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,

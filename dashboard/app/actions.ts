@@ -55,7 +55,11 @@ Columns:
   operator          text          -- company operating the asset (free text; use ILIKE)
   commodity         text[]        -- metal SYMBOLS: Au(gold) Ag(silver) Cu(copper) Ni(nickel) Zn(zinc) Mo(moly) PGE.
                                      Filter with: commodity && array['Au']  or  'Au' = any(commodity)
-  jurisdiction      text          -- country / state / province (free text; use ILIKE). Location questions -> here.
+  jurisdiction      text          -- full free-text location, e.g. "Sonora, Mexico" (use ILIKE for granular/county-level).
+  country           text          -- canonical country, e.g. 'Canada','United States','Chile'. Prefer this for country questions.
+  state_province    text          -- primary state/province/region (NULL if country-level or multi-state)
+  continent         text          -- 'North America'|'South America'|'Africa'|'Asia'|'Oceania'|'Europe'. Use for regional questions.
+  jurisdiction_tier smallint      -- jurisdiction risk tier: 1 = US/Canada/Australia (2 & 3 not yet assigned; currently NULL)
   stage             text          -- exploration | PEA | PFS | FS | development | producing (free text; use ILIKE)
   est_startup       text
   royalty_type      text          -- NSR | NPI | GSR/GROSS | metal stream | ... (free text; use ILIKE)

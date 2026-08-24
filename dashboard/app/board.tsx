@@ -10,6 +10,7 @@ const M: Record<string, string> = {
 };
 const METALS = ["Au", "Ag", "Cu", "Ni", "Zn", "Mo", "PGE"];
 const REGIMES = ["NI 43-101", "S-K 1300", "JORC"];
+const CONTINENTS = ["North America", "South America", "Africa", "Asia", "Oceania", "Europe"];
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 function featureList(r: Royalty): { k: string; v: string }[] {
@@ -44,6 +45,8 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [q, setQ] = useState("");
   const [comm, setComm] = useState<Set<string>>(new Set());
   const [regime, setRegime] = useState<Set<string>>(new Set());
+  const [cont, setCont] = useState<Set<string>>(new Set());
+  const [tier1, setTier1] = useState(false);
   const [sort, setSort] = useState<string>("rate_pct");
   const [dir, setDir] = useState(-1);
   const [view, setView] = useState<"table" | "cards">("table");
@@ -108,8 +111,10 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         if (!hit) return false;
       }
       if (regime.size && !(r.regime && regime.has(r.regime))) return false;
+      if (cont.size && !(r.continent && cont.has(r.continent))) return false;
+      if (tier1 && r.jurisdiction_tier !== 1) return false;
       if (words.length) {
-        const blob = `${r.asset} ${r.operator ?? ""} ${r.juris ?? ""} ${r.holder ?? ""} ${(r.commodity || []).join(" ")} ${r.stage ?? ""} ${r.type ?? ""} ${r.rate ?? ""} ${r.features_note ?? ""}`.toLowerCase();
+        const blob = `${r.asset} ${r.operator ?? ""} ${r.juris ?? ""} ${r.continent ?? ""} ${r.country ?? ""} ${r.holder ?? ""} ${(r.commodity || []).join(" ")} ${r.stage ?? ""} ${r.type ?? ""} ${r.rate ?? ""} ${r.features_note ?? ""}`.toLowerCase();
         if (!words.every((w) => blob.includes(w))) return false;
       }
       return true;
@@ -121,7 +126,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
     }
     return out;
-  }, [data, q, comm, regime, sort, dir, aiIds, aiOrder]);
+  }, [data, q, comm, regime, cont, tier1, sort, dir, aiIds, aiOrder]);
 
   const selIdx = selId ? rows.findIndex((r) => r.id === selId) : -1;
   const sel = selIdx >= 0 ? rows[selIdx] : null;
@@ -194,6 +199,9 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         <Chip label="Other" color="#8a8172" on={comm.has("Other")} onClick={() => toggle(comm, setComm, "Other")} />
         <span className="glabel" style={{ marginLeft: 6 }}>Regime</span>
         {REGIMES.map((r) => <Chip key={r} label={r} on={regime.has(r)} onClick={() => toggle(regime, setRegime, r)} />)}
+        <span className="glabel" style={{ marginLeft: 6 }}>Region</span>
+        {CONTINENTS.map((c) => <Chip key={c} label={c} on={cont.has(c)} onClick={() => toggle(cont, setCont, c)} />)}
+        <Chip label="Tier 1" color="#f5b23e" on={tier1} onClick={() => setTier1((v) => !v)} />
         <div className="rt">
           {!sel && <div className="toggle">
             <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>▤ Table</button>
@@ -340,6 +348,9 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       <div className="sec">Property</div>
       <div className="dgrid">
         <Cell k="Jurisdiction" v={r.juris} />
+        <Cell k="Country" v={[r.country, r.state_province].filter(Boolean).join(" · ")} />
+        <Cell k="Continent" v={r.continent} />
+        <Cell k="Jurisdiction tier" v={r.jurisdiction_tier ? `Tier ${r.jurisdiction_tier}` : null} />
         <Cell k="Stage / est. start" v={[r.stage, r.est_startup].filter(Boolean).join(" · ")} />
         <Cell k="S&P ID" v={r.sp_id} />
         <Cell k="Granted" v={r.royalty_created} />
