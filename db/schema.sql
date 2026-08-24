@@ -30,6 +30,12 @@ CREATE TABLE royalties (
     stage                   TEXT,                 -- exploration / PEA / PFS / FS / development / producing
     est_startup             TEXT,                 -- "Stage / Est. Start-Up" — the est. start year, if given
 
+    -- structured jurisdiction (derived from `jurisdiction` free-text via scripts/enrich_jurisdiction.py)
+    country                 TEXT,                 -- canonical country (e.g. "Canada", "United States")
+    state_province          TEXT,                 -- primary state/province/region (NULL if country-level)
+    continent               TEXT,                 -- derived from country
+    jurisdiction_tier       SMALLINT,             -- 1=US/CA/AU; 2/3 from Matt's list (pending)
+
     -- ── Royalty Details ───────────────────────────────────────────────────
     royalty_type            TEXT,                 -- NSR / GSR / NPI / GVR / metal stream / ...
     rate                    TEXT,                 -- as stated: "2.00%", "0.7-1.3%", "US$5/t"
