@@ -260,7 +260,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
                   <td className="op"><span className="cl">{r.operator}</span></td>
                   <td className="juris"><span className="cl">{r.juris}</span></td>
                   <td><Commodity c={r.commodity} /></td>
-                  <td>{r.stage && <span className="stage">{r.stage}</span>}</td>
+                  <td>{r.stage && <span className="stage" title={r.stage}>{r.stage.replace(/\s*\([^)]*\)/g, "")}</span>}</td>
                   <td className="rate"><div className="v">{r.rate ?? "—"}</div></td>
                   <td className="type"><span className="cl">{r.type}</span></td>
                   <td className="holder"><div className="h">{r.holder ?? "—"}</div>{r.competitor_holder && <span className="comptag" title={`Held by competitor: ${r.competitor_holder}`}>⚑ competitor</span>}{r.holder_note && <div className="hn">{r.holder_note}</div>}</td>
@@ -278,7 +278,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
                 <div className="cinfo"><div className="nm">{r.asset}</div><div className="op2">{r.operator} · {r.juris}</div></div>
                 <div className="crate"><div className="rr">{r.rate ?? "—"}</div><div className="rt2">{r.type}</div></div>
               </div>
-              <div className="mid"><Commodity c={r.commodity} />{r.stage && <span className="stage">{r.stage}</span>}{feats.slice(0, 2).map((f, i) => <span key={i} className="fchip">{f.k}</span>)}</div>
+              <div className="mid"><Commodity c={r.commodity} />{r.stage && <span className="stage" title={r.stage}>{r.stage.replace(/\s*\([^)]*\)/g, "")}</span>}{feats.slice(0, 2).map((f, i) => <span key={i} className="fchip">{f.k}</span>)}</div>
               <div className="foot"><span className="hh">held by <b>{r.holder ?? "—"}</b></span>{r.quote_verified && <span className="verified" style={{ fontSize: 12, flex: "none" }}>✓ verified</span>}</div>
             </div>); })}
         </div>
