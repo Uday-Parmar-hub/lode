@@ -104,6 +104,9 @@ tbody tr:hover .src{color:var(--gold-hi)}
 .repbadge{display:inline-block;margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;
   color:var(--cyan);background:rgba(87,224,207,.09);border:1px solid rgba(87,224,207,.25);border-radius:5px;padding:1px 5px;vertical-align:1px}
 .repcount{color:var(--cyan)}
+.comptag{display:inline-block;margin-top:3px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.05em;color:#e5a996;background:rgba(214,138,122,.1);
+  border:1px solid rgba(214,138,122,.32);border-radius:5px;padding:1px 5px;white-space:nowrap}
 
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;padding:18px 24px 60px}
 .card{position:relative;display:flex;flex-direction:column;min-height:188px;border:1px solid var(--line);border-radius:15px;

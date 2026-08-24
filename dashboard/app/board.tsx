@@ -47,6 +47,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [regime, setRegime] = useState<Set<string>>(new Set());
   const [cont, setCont] = useState<Set<string>>(new Set());
   const [tier1, setTier1] = useState(false);
+  const [compOnly, setCompOnly] = useState(false);
   const [sort, setSort] = useState<string>("rate_pct");
   const [dir, setDir] = useState(-1);
   const [view, setView] = useState<"table" | "cards">("table");
@@ -113,6 +114,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       if (regime.size && !(r.regime && regime.has(r.regime))) return false;
       if (cont.size && !(r.continent && cont.has(r.continent))) return false;
       if (tier1 && r.jurisdiction_tier !== 1) return false;
+      if (compOnly && !r.competitor_holder) return false;
       if (words.length) {
         const blob = `${r.asset} ${r.operator ?? ""} ${r.juris ?? ""} ${r.continent ?? ""} ${r.country ?? ""} ${r.holder ?? ""} ${(r.commodity || []).join(" ")} ${r.stage ?? ""} ${r.type ?? ""} ${r.rate ?? ""} ${r.features_note ?? ""}`.toLowerCase();
         if (!words.every((w) => blob.includes(w))) return false;
@@ -126,7 +128,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
     }
     return out;
-  }, [data, q, comm, regime, cont, tier1, sort, dir, aiIds, aiOrder]);
+  }, [data, q, comm, regime, cont, tier1, compOnly, sort, dir, aiIds, aiOrder]);
 
   const selIdx = selId ? rows.findIndex((r) => r.id === selId) : -1;
   const sel = selIdx >= 0 ? rows[selIdx] : null;
@@ -202,6 +204,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         <span className="glabel" style={{ marginLeft: 6 }}>Region</span>
         {CONTINENTS.map((c) => <Chip key={c} label={c} on={cont.has(c)} onClick={() => toggle(cont, setCont, c)} />)}
         <Chip label="Tier 1" color="#f5b23e" on={tier1} onClick={() => setTier1((v) => !v)} />
+        <Chip label="Competitor-held" color="#d98a7a" on={compOnly} onClick={() => setCompOnly((v) => !v)} />
         <div className="rt">
           {!sel && <div className="toggle">
             <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>▤ Table</button>
@@ -260,7 +263,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
                   <td>{r.stage && <span className="stage">{r.stage}</span>}</td>
                   <td className="rate"><div className="v">{r.rate ?? "—"}</div></td>
                   <td className="type"><span className="cl">{r.type}</span></td>
-                  <td className="holder"><div className="h">{r.holder ?? "—"}</div>{r.holder_note && <div className="hn">{r.holder_note}</div>}</td>
+                  <td className="holder"><div className="h">{r.holder ?? "—"}</div>{r.competitor_holder && <span className="comptag" title={`Held by competitor: ${r.competitor_holder}`}>⚑ competitor</span>}{r.holder_note && <div className="hn">{r.holder_note}</div>}</td>
                   <td><div className="fchips">{feats.slice(0, 3).map((f, i) => <span key={i} className="fchip">{f.k}</span>)}{!feats.length && <span style={{ color: "var(--text-3)" }}>—</span>}</div></td>
                   <td className="src">{r.source_label} {r.quote_verified && <span className="verified">✓</span>}{r.report_count > 1 && <span className="repbadge" title={`Corroborated by ${r.report_count} source reports`}>×{r.report_count}</span>}</td>
                 </tr>); })}
@@ -338,7 +341,7 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       <div className="sec">Instrument</div>
       <div className="dgrid">
         <Cell k="Rate" v={`${r.rate ?? "—"} ${r.type ?? ""}`} gold />
-        <Cell k="Held by" v={<>{r.holder ?? "—"}{r.holder_note && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.holder_note}</div>}</>} />
+        <Cell k="Held by" v={<>{r.holder ?? "—"}{r.competitor_holder && <span className="comptag" style={{ marginLeft: 6 }} title={`Competitor: ${r.competitor_holder}`}>⚑ competitor</span>}{r.holder_note && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.holder_note}</div>}</>} />
         <Cell k="Available" v={<span className={`avail-${cur("availability")}`}>{cap((cur("availability") as string) || "unknown")}</span>} />
         <Cell k="Confidence" v={r.conf != null ? `${r.conf} / 5` : "—"} />
         <Cell k="Commodity" v={(r.commodity || []).join(" · ")} />

@@ -18,6 +18,7 @@ export interface Royalty {
   type: string | null;
   holder: string | null;
   holder_note: string | null;
+  competitor_holder: string | null;
   avail: string; // royalty_available enum
   conf: number | null;
   // structured features (Claude-extracted)
@@ -63,7 +64,7 @@ export interface Royalty {
 const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdiction as juris,
   country, state_province, continent, jurisdiction_tier, commodity,
   stage, est_startup, rate, rate_pct::float8 as rate_pct, royalty_type as type, holder, holder_note,
-  royalty_available::text as avail, extract_confidence as conf, royalty_created, info_available,
+  royalty_available::text as avail, extract_confidence as conf, royalty_created, info_available, competitor_holder,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_label, source_url, source_date::text as source_date, source_quote as quote, quote_verified,
   status::text as status, tier, rank, keep,

@@ -66,6 +66,8 @@ Columns:
   rate              text          -- rate as stated, e.g. "2.00%", "0.7-1.3%", "US$5/t"
   rate_pct          numeric       -- parsed leading percent (2 means 2%); NULL for non-% rates. Use for < > ranges.
   holder            text          -- the counterparty entitled to the royalty (free text; use ILIKE)
+  competitor_holder text          -- if the holder is one of OR's competitors, the competitor's name; else NULL.
+                                     "competitor-held" / "held by a competitor" -> competitor_holder is not null.
   holder_note       text
   royalty_available availability  -- enum: 'available' | 'partial' | 'held' | 'unknown'
   extract_confidence smallint     -- 1..5
