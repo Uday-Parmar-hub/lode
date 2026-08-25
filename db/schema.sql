@@ -88,6 +88,10 @@ CREATE TABLE royalties (
     -- ── Bookkeeping ───────────────────────────────────────────────────────
     is_primary              BOOLEAN NOT NULL DEFAULT TRUE,  -- best/newest row per asset-royalty (grid default)
     dup_key                 TEXT,                           -- canonical dedup key (normed asset|type|rate|holder); set by scripts/dedupe.py
+    -- ── Memory / version-chain (migration 003) ────────────────────────────
+    instrument_id           TEXT,                           -- stable identity of a real royalty; a chain of version rows shares it
+    origin                  TEXT,                           -- provenance: claude | claude_human_edited | human | marketwatch
+    needs_revalidation      BOOLEAN NOT NULL DEFAULT FALSE, -- a new source/edit landed on a validated instrument -> re-review
     ingested_from           TEXT NOT NULL DEFAULT 'pilot',  -- pilot | universe | marketwatch
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),   -- "Date Entered"
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),    -- "Date Modified"
