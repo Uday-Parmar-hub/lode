@@ -124,6 +124,24 @@ tbody tr:hover .src{color:var(--gold-hi)}
 .factedit input:focus{border-color:var(--gold)}
 .facthint{font-size:11.5px;color:var(--text-3);line-height:1.5}
 .factact{display:flex;gap:9px}
+/* version-history panel */
+.vcount{margin-left:9px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--text-3);
+  background:var(--line);border-radius:6px;padding:2px 7px;vertical-align:middle}
+.vhist{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.vrow{padding:11px 14px;border-left:3px solid transparent;border-bottom:1px solid var(--line);background:#100e0b}
+.vrow:last-child{border-bottom:0}
+.vrow.cur{border-left-color:var(--gold);background:rgba(245,178,62,.04)}
+.vmeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.vdate{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-2);font-weight:600}
+.vorigin{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+  padding:1px 6px;border-radius:5px;color:var(--text-3);background:var(--line)}
+.vorigin.o-claude_human_edited{color:var(--cyan);background:rgba(87,224,207,.1)}
+.vorigin.o-marketwatch{color:var(--gold-hi);background:var(--gold-soft,rgba(245,178,62,.1))}
+.vtag{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:1px 6px;border-radius:5px}
+.vtag.cur{color:var(--gold);background:var(--gold-soft,rgba(245,178,62,.12))}
+.vtag.reval{color:var(--warn);background:rgba(230,180,90,.1)}
+.vfacts{font-size:13px;color:var(--text);font-weight:500}
+.vsrc{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-3);margin-top:2px}
 
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;padding:18px 24px 60px}
 .card{position:relative;display:flex;flex-direction:column;min-height:188px;border:1px solid var(--line);border-radius:15px;

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Royalty, Kpis } from "@/lib/queries";
-import { saveReview, saveFactEdit, aiQuery, type ReviewPatch, type FactEdit } from "./actions";
+import { saveReview, saveFactEdit, getInstrumentHistory, aiQuery, type ReviewPatch, type FactEdit, type Version } from "./actions";
 
 const M: Record<string, string> = {
   Au: "#e8b45a", Ag: "#c9cfd8", Cu: "#cd7d4c", Mo: "#6e8ba6",
@@ -13,6 +13,8 @@ const METALS = ["Au", "Ag", "Cu", "Ni", "Zn", "Mo", "PGE"];
 const REGIMES = ["NI 43-101", "S-K 1300", "JORC"];
 const CONTINENTS = ["North America", "South America", "Africa", "Asia", "Oceania", "Europe"];
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const originLabel = (o: string | null): string =>
+  o === "claude_human_edited" ? "human-edited" : o === "marketwatch" ? "MarketWatch" : o === "human" ? "human" : "AI";
 
 function featureList(r: Royalty): { k: string; v: string }[] {
   const out: { k: string; v: string }[] = [];
@@ -303,7 +305,15 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
   const [editing, setEditing] = useState(false);
   const [fx, setFx] = useState<FactEdit>({});
   const [savingFact, setSavingFact] = useState(false);
+  const [versions, setVersions] = useState<Version[] | null>(null);
   useEffect(() => { setDraft({}); setEditing(false); setFx({}); }, [r.id]);
+  // load this instrument's version chain for the history panel
+  useEffect(() => {
+    let live = true;
+    setVersions(null);
+    if (r.instrument_id) getInstrumentHistory(r.instrument_id).then((v) => { if (live) setVersions(v); });
+    return () => { live = false; };
+  }, [r.instrument_id, r.id]);
 
   // Fact edit (memory-chain): append a new version with the analyst's corrections, then re-fetch.
   const FACT_KEYS: (keyof FactEdit)[] = ["royalty_type", "rate", "holder", "holder_note"];
@@ -409,6 +419,26 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
         <div className="feat">{feats.map((f, i) => <div key={i} className="frow"><span className="fk">{f.k}</span><span className="fv">{f.v}</span></div>)}</div>
       ) : <div style={{ color: "var(--text-3)", fontSize: 13 }}>None disclosed — a straightforward instrument.</div>}
       {r.features_note && <div className="fnote"><span className="fk">also check</span> {r.features_note}</div>}
+
+      {versions && versions.length > 1 && (
+        <>
+          <div className="sec">Version history <span className="vcount">{versions.length} versions</span></div>
+          <div className="vhist">
+            {versions.map((v) => (
+              <div key={v.id} className={`vrow${v.is_primary ? " cur" : ""}`}>
+                <div className="vmeta">
+                  <span className="vdate">{(v.source_date || v.created_at || "").slice(0, 10) || "—"}</span>
+                  <span className={`vorigin o-${v.origin ?? "claude"}`}>{originLabel(v.origin)}</span>
+                  {v.is_primary && <span className="vtag cur">current</span>}
+                  {v.needs_revalidation && <span className="vtag reval">needs re-validation</span>}
+                </div>
+                <div className="vfacts">{[v.rate, v.royalty_type].filter(Boolean).join(" ") || "—"} &nbsp;·&nbsp; {v.holder ?? "—"}</div>
+                <div className="vsrc">{v.source_label ?? "—"}{v.quote_verified && <span className="verified"> ✓</span>}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="sec">Review · analyst</div>
       <div className="review">

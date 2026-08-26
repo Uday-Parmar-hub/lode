@@ -109,6 +109,43 @@ export async function saveFactEdit(id: string, e: FactEdit): Promise<{ ok: boole
   });
 }
 
+/** One version in an instrument's chain (for the history panel). */
+export interface Version {
+  id: string;
+  is_primary: boolean;
+  origin: string | null;
+  status: string;
+  needs_revalidation: boolean;
+  source_label: string | null;
+  source_date: string | null;
+  holder: string | null;
+  rate: string | null;
+  royalty_type: string | null;
+  quote_verified: boolean;
+  created_at: string | null;
+}
+
+/** All versions of one instrument, newest/current first — powers the drawer's version-history panel.
+ *  Collapses to ONE entry per source event: rows sharing a source_docid (intra-report extraction
+ *  duplicates from a heavily-merged instrument) fold into a single representative (the primary /
+ *  holder-bearing one); distinct reports and each human edit (unique '#edit-' docid) stay separate. */
+export async function getInstrumentHistory(instrumentId: string): Promise<Version[]> {
+  if (!instrumentId) return [];
+  return query<Version>(
+    `select id::text as id, is_primary, origin, status::text as status, needs_revalidation,
+            source_label, source_date::text as source_date, holder, rate, royalty_type,
+            quote_verified, created_at::text as created_at
+       from (
+         select distinct on (source_docid) *
+           from royalties
+          where instrument_id = $1
+          order by source_docid, is_primary desc, (holder is not null) desc, created_at desc
+       ) v
+      order by is_primary desc, source_date desc nulls last, created_at desc`,
+    [instrumentId],
+  );
+}
+
 // ── AI search: natural language → SQL ─────────────────────────────────────────
 // The analyst asks in plain English ("producing gold in Nevada under 2%", "top 10 holders by number
 // of royalties", "average NSR by jurisdiction"). Claude writes ONE read-only SELECT over the royalties

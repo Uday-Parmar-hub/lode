@@ -76,7 +76,7 @@ const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdicti
   score_project_quality, score_instrument_quality, score_confidence, score_actionable, comments, link,
   created_at::text as created_at, updated_at::text as updated_at,
   -- corroboration = distinct SOURCE reports in this instrument's chain (exclude human-edit versions)
-  (select count(*) from royalties d where d.instrument_id = royalties.instrument_id and d.source_docid not like '%#edit-%')::int as report_count,
+  (select count(distinct d.source_docid) from royalties d where d.instrument_id = royalties.instrument_id and d.source_docid not like '%#edit-%')::int as report_count,
   (select extract(year from min(source_date))::int from royalties d where d.instrument_id = royalties.instrument_id and d.source_docid not like '%#edit-%') as report_from,
   (select extract(year from max(source_date))::int from royalties d where d.instrument_id = royalties.instrument_id and d.source_docid not like '%#edit-%') as report_to`;
 
