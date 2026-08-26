@@ -32,6 +32,9 @@ from techreport import config, db  # noqa: E402
 # (resolve_assets.py, asset renames applied when building the key).
 LEDGER = config.ROOT / "data" / "holder_merges.json"
 ASSET_LEDGER = config.ROOT / "data" / "asset_aliases.json"
+# audit-confirmed merges (Fable-5 duplicate audit -> apply_audit_fixes.py), same {canonical_id,member_ids}
+# format as holder_merges but a SEPARATE file so re-running resolve_holders.py can't clobber them.
+AUDIT_LEDGER = config.ROOT / "data" / "audit_merges_ledger.json"
 
 # accented -> ascii fold (Kandiolé -> kandiole, etc.)
 _ACC = "'áàâäãéèêëíìîïóòôöõúùûüçñ','aaaaaeeeeiiiiooooouuuucn'"
@@ -96,27 +99,28 @@ def load_asset_aliases(cur) -> int:
 
 def apply_ledger(cur) -> int:
     """Apply the semantic merges: point every merged row's dup_key at the canonical row's dup_key,
-    so the whole lineage shares one canonical group (and one corroboration count). Idempotent."""
-    if not LEDGER.exists():
-        return 0
-    merges = json.loads(LEDGER.read_text(encoding="utf-8"))
+    so the whole lineage shares one canonical group (and one corroboration count). Idempotent.
+    Reads BOTH the holder-resolution ledger (pass 2) and the audit-confirmed-merges ledger."""
     applied = 0
-    for m in merges:
-        cur.execute("select dup_key from royalties where id=%s", (m["canonical_id"],))
-        row = cur.fetchone()
-        if not row:
+    for path in (LEDGER, AUDIT_LEDGER):
+        if not path.exists():
             continue
-        kc = row[0]
-        for mid in m["member_ids"]:
-            if mid == m["canonical_id"]:
+        for m in json.loads(path.read_text(encoding="utf-8")):
+            cur.execute("select dup_key from royalties where id=%s", (m["canonical_id"],))
+            row = cur.fetchone()
+            if not row:
                 continue
-            cur.execute("select dup_key from royalties where id=%s", (mid,))
-            r2 = cur.fetchone()
-            if not r2 or r2[0] == kc or r2[0] is None:
-                continue
-            # move the member's whole re-report group under the canonical key
-            cur.execute("update royalties set dup_key=%s where dup_key=%s", (kc, r2[0]))
-        applied += 1
+            kc = row[0]
+            for mid in m["member_ids"]:
+                if mid == m["canonical_id"]:
+                    continue
+                cur.execute("select dup_key from royalties where id=%s", (mid,))
+                r2 = cur.fetchone()
+                if not r2 or r2[0] == kc or r2[0] is None:
+                    continue
+                # move the member's whole re-report group under the canonical key
+                cur.execute("update royalties set dup_key=%s where dup_key=%s", (kc, r2[0]))
+            applied += 1
     return applied
 
 
@@ -147,6 +151,22 @@ def main() -> None:
                 )
                 update royalties r set is_primary = (ranked.rn = 1)
                 from ranked where ranked.id = r.id
+                """
+            )
+            # keep instrument_id consistent with the dup_key groups: one stable id per group, REUSING an
+            # existing id in the group where present (so confirmed merges / prior ids survive a re-run),
+            # minting a fresh one only for groups that have none. Makes instrument_id a durable output.
+            cur.execute(
+                """
+                with grp as (
+                  select dup_key,
+                         coalesce(
+                           max(instrument_id) filter (where instrument_id is not null),
+                           'inst_'||substr(md5(dup_key||clock_timestamp()::text||random()::text),1,20)
+                         ) as iid
+                  from royalties where dup_key is not null group by dup_key
+                )
+                update royalties r set instrument_id = grp.iid from grp where r.dup_key = grp.dup_key
                 """
             )
         finally:
