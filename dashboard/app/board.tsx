@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Royalty, Kpis } from "@/lib/queries";
-import { saveReview, aiQuery, type ReviewPatch } from "./actions";
+import { saveReview, saveFactEdit, aiQuery, type ReviewPatch, type FactEdit } from "./actions";
 
 const M: Record<string, string> = {
   Au: "#e8b45a", Ag: "#c9cfd8", Cu: "#cd7d4c", Mo: "#6e8ba6",
@@ -296,9 +297,26 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
   r: Royalty; idx: number; total: number; onNav: (d: number) => void; onClose: () => void; onApply: (p: Partial<Royalty>) => void;
 }) {
   const feats = featureList(r);
+  const router = useRouter();
   const [draft, setDraft] = useState<ReviewPatch>({});
   const [saving, setSaving] = useState<string | null>(null);
-  useEffect(() => { setDraft({}); }, [r.id]);
+  const [editing, setEditing] = useState(false);
+  const [fx, setFx] = useState<FactEdit>({});
+  const [savingFact, setSavingFact] = useState(false);
+  useEffect(() => { setDraft({}); setEditing(false); setFx({}); }, [r.id]);
+
+  // Fact edit (memory-chain): append a new version with the analyst's corrections, then re-fetch.
+  const FACT_KEYS: (keyof FactEdit)[] = ["royalty_type", "rate", "holder", "holder_note"];
+  const fcur = <K extends keyof FactEdit>(k: K): FactEdit[K] =>
+    (fx[k] !== undefined ? fx[k] : (r as unknown as Record<string, unknown>)[k === "royalty_type" ? "type" : k]) as FactEdit[K];
+  const saveFacts = async () => {
+    const edit: FactEdit = {};
+    for (const k of FACT_KEYS) (edit as Record<string, unknown>)[k] = fcur(k);
+    setSavingFact(true);
+    const res = await saveFactEdit(r.id, edit);
+    setSavingFact(false);
+    if (res.ok) { setEditing(false); router.refresh(); }
+  };
   // ReviewPatch keys mostly match Royalty fields; `availability` maps to the row's `avail` alias.
   const ROWKEY: Partial<Record<keyof ReviewPatch, string>> = { availability: "avail" };
   const cur = <K extends keyof ReviewPatch>(k: K): ReviewPatch[K] =>
@@ -338,7 +356,26 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       <div className="dtitle">{r.asset}</div>
       <div className="dmeta">{r.operator}</div>
 
-      <div className="sec">Instrument</div>
+      <div className="sec">
+        Instrument
+        {r.origin === "claude_human_edited" && <span className="prov edited" title="A field was corrected by an analyst">✎ human-edited</span>}
+        {r.needs_revalidation && <span className="prov reval" title="A new source or edit landed — needs re-validation">⟳ needs re-validation</span>}
+        <span style={{ flex: 1 }} />
+        {!editing && <button className="editbtn" onClick={() => { setFx({}); setEditing(true); }} title="Correct a fact — saves a new version">✎ Edit</button>}
+      </div>
+      {editing ? (
+        <div className="factedit">
+          <label>Rate<input value={(fcur("rate") as string) ?? ""} onChange={(e) => setFx((d) => ({ ...d, rate: e.target.value || null }))} placeholder="e.g. 2.00% NSR" /></label>
+          <label>Type<input value={(fcur("royalty_type") as string) ?? ""} onChange={(e) => setFx((d) => ({ ...d, royalty_type: e.target.value || null }))} placeholder="e.g. NSR / NPI / metal stream" /></label>
+          <label>Held by<input value={(fcur("holder") as string) ?? ""} onChange={(e) => setFx((d) => ({ ...d, holder: e.target.value || null }))} placeholder="counterparty (the seller)" /></label>
+          <label>Held-by note<input value={(fcur("holder_note") as string) ?? ""} onChange={(e) => setFx((d) => ({ ...d, holder_note: e.target.value || null }))} placeholder="lineage / clarification (optional)" /></label>
+          <div className="facthint">Saving keeps the original as history and adds a new, human-edited version (flagged for re-validation).</div>
+          <div className="factact">
+            <button className="btn primary" disabled={savingFact} onClick={saveFacts}>{savingFact ? "Saving…" : "Save as new version"}</button>
+            <button className="btn ghost" disabled={savingFact} onClick={() => { setEditing(false); setFx({}); }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
       <div className="dgrid">
         <Cell k="Rate" v={`${r.rate ?? "—"} ${r.type ?? ""}`} gold />
         <Cell k="Held by" v={<>{r.holder ?? "—"}{r.competitor_holder && <span className="comptag" style={{ marginLeft: 6 }} title={`Competitor: ${r.competitor_holder}`}>⚑ competitor</span>}{r.holder_note && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.holder_note}</div>}</>} />
@@ -347,6 +384,7 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
         <Cell k="Commodity" v={(r.commodity || []).join(" · ")} />
         <Cell k="Regime" v={r.regime} />
       </div>
+      )}
 
       <div className="sec">Property</div>
       <div className="dgrid">

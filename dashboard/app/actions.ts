@@ -1,7 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { query, queryReadOnly } from "@/lib/db";
+import { query, queryReadOnly, withTransaction } from "@/lib/db";
 
 export interface ReviewPatch {
   status?: string; // review_status enum
@@ -35,6 +35,78 @@ export async function saveReview(id: string, p: ReviewPatch): Promise<{ ok: bool
      p.rank ?? null, p.link ?? null, p.availability ?? null],
   );
   return { ok: true };
+}
+
+/** The instrument "fact" fields an analyst can correct — an edit to any of these creates a NEW
+ *  version in the instrument's chain (memory-chain), it never overwrites. Review-layer fields
+ *  (tier/keep/scores/comments/validate) update in place via saveReview above. */
+export interface FactEdit {
+  royalty_type?: string | null;
+  rate?: string | null;
+  holder?: string | null;
+  holder_note?: string | null;
+  partial_coverage?: boolean | null;
+  advance_payments?: string | null;
+  production_threshold?: string | null;
+  production_cap?: string | null;
+  buyback?: string | null;
+  step_down?: string | null;
+  rofr?: boolean | null;
+  features_note?: string | null;
+}
+
+/** Parse the leading percent of a rate string ("2.00%" -> 2, "US$5/oz" -> null) for sort/filter. */
+function parseRatePct(rate: string | null | undefined): number | null {
+  if (!rate) return null;
+  const m = rate.match(/(\d+(?:\.\d+)?)\s*%/);
+  return m ? Number(m[1]) : null;
+}
+
+/** Append-on-edit (memory-chain). A human correction to instrument facts inserts a NEW version row
+ *  (origin=claude_human_edited, dated, needs_revalidation, status=pending) copied from the current row
+ *  with the edits applied, then makes it the sole primary of its instrument chain — the prior row is
+ *  retained as history (is_primary=false). Nothing is overwritten. Returns the new row id. */
+export async function saveFactEdit(id: string, e: FactEdit): Promise<{ ok: boolean; newId?: string }> {
+  const ratePct = parseRatePct(e.rate);
+  return withTransaction(async (c) => {
+    const ins = await c.query(
+      `INSERT INTO royalties (
+         sp_id, project_name, operator, commodity, jurisdiction, stage, est_startup,
+         royalty_available, extract_confidence, royalty_created, info_available, regime,
+         source_label, source_url, source_date, source_quote, quote_verified,
+         tier, rank, keep, score_project_quality, score_instrument_quality, score_confidence, score_actionable,
+         comments, link, ingested_from, dup_key, country, state_province, continent, jurisdiction_tier,
+         competitor_holder, instrument_id,
+         royalty_type, rate, rate_pct, holder, holder_note,
+         partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
+         source_docid, origin, status, is_primary, needs_revalidation, reviewed_by, reviewed_at, created_at, updated_at
+       )
+       SELECT
+         sp_id, project_name, operator, commodity, jurisdiction, stage, est_startup,
+         royalty_available, extract_confidence, royalty_created, info_available, regime,
+         source_label, source_url, source_date, source_quote, quote_verified,
+         tier, rank, keep, score_project_quality, score_instrument_quality, score_confidence, score_actionable,
+         comments, link, ingested_from, dup_key, country, state_province, continent, jurisdiction_tier,
+         competitor_holder, instrument_id,
+         $2, $3, $4::numeric, $5, $6,
+         $7::boolean, $8, $9, $10, $11, $12, $13::boolean, $14,
+         coalesce(source_docid,'manual') || '#edit-' || extract(epoch from now())::bigint,
+         'claude_human_edited', 'pending', true, true, null, null, now(), now()
+       FROM royalties WHERE id = $1::bigint
+       RETURNING id, instrument_id`,
+      [id, e.royalty_type ?? null, e.rate ?? null, ratePct, e.holder ?? null, e.holder_note ?? null,
+       e.partial_coverage ?? null, e.advance_payments ?? null, e.production_threshold ?? null,
+       e.production_cap ?? null, e.buyback ?? null, e.step_down ?? null, e.rofr ?? null, e.features_note ?? null],
+    );
+    if (!ins.rows.length) return { ok: false };
+    const { id: newId, instrument_id: iid } = ins.rows[0] as { id: string; instrument_id: string };
+    // make the new version the sole primary of its chain; the prior version(s) become history
+    await c.query(
+      `UPDATE royalties SET is_primary = (id = $1::bigint) WHERE instrument_id = $2`,
+      [newId, iid],
+    );
+    return { ok: true, newId: String(newId) };
+  });
 }
 
 // ── AI search: natural language → SQL ─────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 // Server-only Postgres pool for LODE. Reused across dev hot-reloads via a global so we don't leak a
 // new pool per module re-eval. Reads DATABASE_URL (dashboard/.env.local) — the local conda Postgres.
@@ -32,6 +32,23 @@ export async function query<T = Record<string, unknown>>(
 ): Promise<T[]> {
   const result = await pool.query(text, params);
   return result.rows as T[];
+}
+
+/** Run `fn` inside a single write transaction on the owner pool (commit on success, rollback on throw).
+ *  Used by the memory-chain append (insert a new version + demote the old one atomically). */
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const result = await fn(client);
+    await client.query("commit");
+    return result;
+  } catch (e) {
+    await client.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 /** Run one LLM-generated SELECT on the read-only pool inside an explicit read-only transaction.

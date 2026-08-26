@@ -48,6 +48,10 @@ export interface Royalty {
   report_count: number;
   report_from: number | null;
   report_to: number | null;
+  // memory / version-chain
+  instrument_id: string | null;
+  origin: string | null; // claude | claude_human_edited | human | marketwatch
+  needs_revalidation: boolean;
   // human review + score layer
   status: string;
   tier: number | null;
@@ -67,12 +71,14 @@ const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdicti
   royalty_available::text as avail, extract_confidence as conf, royalty_created, info_available, competitor_holder,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_label, source_url, source_date::text as source_date, source_quote as quote, quote_verified,
+  instrument_id, origin, needs_revalidation,
   status::text as status, tier, rank, keep,
   score_project_quality, score_instrument_quality, score_confidence, score_actionable, comments, link,
   created_at::text as created_at, updated_at::text as updated_at,
-  (select count(*) from royalties d where d.dup_key = royalties.dup_key)::int as report_count,
-  (select extract(year from min(source_date))::int from royalties d where d.dup_key = royalties.dup_key) as report_from,
-  (select extract(year from max(source_date))::int from royalties d where d.dup_key = royalties.dup_key) as report_to`;
+  -- corroboration = distinct SOURCE reports in this instrument's chain (exclude human-edit versions)
+  (select count(*) from royalties d where d.instrument_id = royalties.instrument_id and d.source_docid not like '%#edit-%')::int as report_count,
+  (select extract(year from min(source_date))::int from royalties d where d.instrument_id = royalties.instrument_id and d.source_docid not like '%#edit-%') as report_from,
+  (select extract(year from max(source_date))::int from royalties d where d.instrument_id = royalties.instrument_id and d.source_docid not like '%#edit-%') as report_to`;
 
 /** Primary royalties (one per asset-royalty after dedup), available-first then by rate. */
 export function getRoyalties(limit = 1500): Promise<Royalty[]> {
