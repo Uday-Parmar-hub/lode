@@ -19,12 +19,15 @@ const originLabel = (o: string | null): string =>
 // Canonical feature taxonomy — the detail view shows ALL of these (dash when absent) for a consistent,
 // scannable checklist (Matt's ask). Grid/card chips still use featureList() below = present ones only.
 // (Two more — commodity-specific, area-of-interest — pending Matt's confirm + a re-extraction.)
-const FEATURES: { k: string; get: (r: Royalty) => string | null }[] = [
+const FEATURES: { k: string; desc?: string; get: (r: Royalty) => string | null }[] = [
   { k: "partial", get: (r) => (r.partial_coverage ? "burdens part of the property" : null) },
   { k: "buy-down", get: (r) => r.buyback },
   { k: "sliding", get: (r) => r.step_down },
-  { k: "cap", get: (r) => r.production_cap },
-  { k: "threshold", get: (r) => r.production_threshold },
+  // "cap" is general (Matt): the royalty/stream stops once a cumulative cap is met — a production
+  // volume OR a cumulative-revenue threshold. Stored in production_cap; extraction will widen to
+  // revenue caps in the next prompt version (with the producing flag).
+  { k: "cap", desc: "royalty/stream stops once a cumulative cap is reached (production volume or revenue)", get: (r) => r.production_cap },
+  { k: "threshold", desc: "royalty applies only once a minimum threshold is reached", get: (r) => r.production_threshold },
   { k: "advance", get: (r) => r.advance_payments },
   { k: "ROFR", get: (r) => (r.rofr ? "right of first refusal / offer" : null) },
 ];
@@ -64,6 +67,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [cont, setCont] = useState<Set<string>>(new Set());
   const [tier1, setTier1] = useState(false);
   const [compOnly, setCompOnly] = useState(false);
+  const [producing, setProducing] = useState(false);
   const [sort, setSort] = useState<string>("rate_pct");
   const [dir, setDir] = useState(-1);
   const [view, setView] = useState<"table" | "cards">("table");
@@ -131,6 +135,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       if (cont.size && !(r.continent && cont.has(r.continent))) return false;
       if (tier1 && r.jurisdiction_tier !== 1) return false;
       if (compOnly && !r.competitor_holder) return false;
+      if (producing && r.is_producing !== true) return false;
       if (words.length) {
         const blob = `${r.asset} ${r.operator ?? ""} ${r.juris ?? ""} ${r.continent ?? ""} ${r.country ?? ""} ${r.holder ?? ""} ${(r.commodity || []).join(" ")} ${r.stage ?? ""} ${r.type ?? ""} ${r.rate ?? ""} ${r.features_note ?? ""}`.toLowerCase();
         if (!words.every((w) => blob.includes(w))) return false;
@@ -144,7 +149,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
     }
     return out;
-  }, [data, q, comm, regime, cont, tier1, compOnly, sort, dir, aiIds, aiOrder]);
+  }, [data, q, comm, regime, cont, tier1, compOnly, producing, sort, dir, aiIds, aiOrder]);
 
   const selIdx = selId ? rows.findIndex((r) => r.id === selId) : -1;
   const sel = selIdx >= 0 ? rows[selIdx] : null;
@@ -220,6 +225,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         <span className="glabel" style={{ marginLeft: 6 }}>Region</span>
         {CONTINENTS.map((c) => <Chip key={c} label={c} on={cont.has(c)} onClick={() => toggle(cont, setCont, c)} />)}
         <Chip label="Tier 1" color="#f5b23e" on={tier1} onClick={() => setTier1((v) => !v)} />
+        <Chip label="Producing" color="#5fae7a" on={producing} onClick={() => setProducing((v) => !v)} />
         <Chip label="Competitor-held" color="#d98a7a" on={compOnly} onClick={() => setCompOnly((v) => !v)} />
         <div className="rt">
           {!sel && <div className="toggle">
@@ -413,14 +419,15 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
         <Cell k="Jurisdiction" v={r.juris} />
         <Cell k="Country" v={[r.country, r.state_province].filter(Boolean).join(" · ")} />
         <Cell k="Continent" v={r.continent} />
-        <Cell k="Jurisdiction tier" v={r.jurisdiction_tier ? `Tier ${r.jurisdiction_tier}` : null} />
+        <Cell k="Jurisdiction tier" v={r.jurisdiction_tier === 1 ? "Tier 1" : "Not tier 1"} />
         <Cell k="Stage / est. start" v={[r.stage, r.est_startup].filter(Boolean).join(" · ")} />
+        <Cell k="Producing" v={r.is_producing == null ? "Unknown" : r.is_producing ? "Yes — in production" : "No — pre-production"} />
         <Cell k="S&P ID" v={r.sp_id} />
         <Cell k="Granted" v={r.royalty_created} />
         <Cell k="Info available" v={r.info_available} />
       </div>
 
-      <div className="sec">Instrument description — from source</div>
+      <div className="sec">Instrument description, as stated in source document</div>
       <div className="assay">
         <div className="q">“{r.quote}”</div>
         <div className="cite">{r.source_label} &nbsp;·&nbsp; {r.quote_verified ? <span className="verified">✓ source-verified</span> : <span>unverified</span>}{r.source_url && (<> &nbsp;·&nbsp; <a href={r.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--gold-hi)" }}>open ↗</a></>)}{r.report_count > 1 && (<> &nbsp;·&nbsp; <span className="repcount">corroborated by {r.report_count} reports{r.report_from && r.report_to ? ` (${r.report_from === r.report_to ? r.report_from : `${r.report_from}–${r.report_to}`})` : ""}</span></>)}</div>
@@ -429,7 +436,7 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       <div className="sec">Instrument features</div>
       <div className="feat">
         {FEATURES.map((f) => { const v = f.get(r); return (
-          <div key={f.k} className={`frow${v ? "" : " empty"}`}><span className="fk">{f.k}</span><span className="fv">{v ?? "—"}</span></div>
+          <div key={f.k} className={`frow${v ? "" : " empty"}`} title={f.desc}><span className="fk">{f.k}</span><span className="fv">{v ?? "—"}</span></div>
         ); })}
       </div>
       {r.features_note && <div className="fnote"><span className="fk">also check</span> {r.features_note}</div>}

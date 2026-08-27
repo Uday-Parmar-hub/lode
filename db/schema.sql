@@ -28,6 +28,7 @@ CREATE TABLE royalties (
     commodity               TEXT[] NOT NULL DEFAULT '{}',   -- {Au,Cu,Mo} — array so we can filter by metal
     jurisdiction            TEXT,
     stage                   TEXT,                 -- exploration / PEA / PFS / FS / development / producing
+    is_producing            BOOLEAN,              -- binary (migration 004): in production at time of source? true/false/NULL=unknown
     est_startup             TEXT,                 -- "Stage / Est. Start-Up" — the est. start year, if given
 
     -- structured jurisdiction (derived from `jurisdiction` free-text via scripts/enrich_jurisdiction.py)
@@ -105,6 +106,7 @@ CREATE INDEX idx_roy_status       ON royalties (status);
 CREATE INDEX idx_roy_available    ON royalties (royalty_available);
 CREATE INDEX idx_roy_rate         ON royalties (rate_pct);
 CREATE INDEX idx_roy_stage        ON royalties (stage);
+CREATE INDEX idx_roy_is_producing ON royalties (is_producing);
 CREATE INDEX idx_roy_commodity    ON royalties USING GIN (commodity);
 CREATE INDEX idx_roy_primary      ON royalties (is_primary) WHERE is_primary;
 CREATE INDEX idx_roy_dupkey       ON royalties (dup_key);

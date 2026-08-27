@@ -50,7 +50,7 @@ class Royalty(BaseModel):
     partial_coverage: bool | None = Field(None, description="true only if the royalty burdens PART of the property (specific claims/ground), not the whole")
     advance_payments: str | None = Field(None, description="advance/minimum royalty or prepayment terms, stated briefly; null if none")
     production_threshold: str | None = Field(None, description="payable only above a stated production threshold; state it; null if none")
-    production_cap: str | None = Field(None, description="capped after N units/$ or a fixed number of payments; state it; null if none")
+    production_cap: str | None = Field(None, description="a cap after which the royalty/stream STOPS — a cumulative production (N units) OR revenue/$ threshold, or a fixed number of payments; state it; null if none")
     buyback: str | None = Field(None, description="buy-back / buy-down right (rate reducible on payment); state the terms; null if none")
     step_down: str | None = Field(None, description="sliding-scale / step-down (rate varies by price, grade, or time); state it; null if none")
     rofr: bool | None = Field(None, description="true only if a right of first refusal or first offer on the royalty is mentioned")
@@ -64,6 +64,7 @@ class RoyaltyExtraction(BaseModel):
     commodity: str | None = None
     jurisdiction: str | None = None
     stage: str | None = Field(None, description="exploration / PEA / PFS / FS / development / producing")
+    is_producing: bool | None = Field(None, description="true if the property is IN PRODUCTION (an operating mine) at the time of THIS report; false if pre-production (exploration/PEA/PFS/FS/development/construction); null if unclear")
     has_third_party_royalty: bool
     royalties: list[Royalty]
     notes: str | None = Field(None, description="anything ambiguous a human should check (e.g. government/production royalties noted but excluded)")
@@ -85,7 +86,8 @@ advance_payments, production_threshold, production_cap, buyback (buy-back/buy-do
 (sliding-scale/step-down), rofr (right of first refusal/offer), and other_terms — each null when not \
 present. Always include the EXACT verbatim sentence(s) as `quote` (never paraphrase — the analyst verifies).
 
-Also capture the asset facts: project_name, operator, commodity, jurisdiction, stage.
+Also capture the asset facts: project_name, operator, commodity, jurisdiction, stage, and is_producing \
+(whether the property is an operating mine at the time of this report — true/false, null if unclear).
 
 If the property has no third-party royalty, set has_third_party_royalty=false and royalties=[]. \
 Operator hint (from our records, may be stale): {operator_hint}

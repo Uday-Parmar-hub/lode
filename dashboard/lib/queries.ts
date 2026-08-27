@@ -13,6 +13,7 @@ export interface Royalty {
   jurisdiction_tier: number | null;
   commodity: string[];
   stage: string | null;
+  is_producing: boolean | null; // binary (migration 004): producing / not / null=unknown, at time of source
   rate: string | null;
   rate_pct: number | null;
   type: string | null;
@@ -67,7 +68,7 @@ export interface Royalty {
 
 const COLS = `id::text as id, sp_id, project_name as asset, operator, jurisdiction as juris,
   country, state_province, continent, jurisdiction_tier, commodity,
-  stage, est_startup, rate, rate_pct::float8 as rate_pct, royalty_type as type, holder, holder_note,
+  stage, is_producing, est_startup, rate, rate_pct::float8 as rate_pct, royalty_type as type, holder, holder_note,
   royalty_available::text as avail, extract_confidence as conf, royalty_created, info_available, competitor_holder,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_label, source_url, source_date::text as source_date, source_quote as quote, quote_verified,

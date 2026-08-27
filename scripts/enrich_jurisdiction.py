@@ -6,8 +6,8 @@
 The `jurisdiction` column is free text pulled from the source reports ("Sonora, Mexico",
 "Chile (Antofagasta Region)", "Yukon / British Columbia, Canada"). This derives structured
 country + primary state/province from it (Claude, one pass over the DISTINCT strings), then
-computes continent (deterministic country->continent map) and jurisdiction_tier (1=US/CA/AU;
-2/3 pending Matt's list).
+computes continent (deterministic country->continent map) and a binary jurisdiction_tier
+(1 = tier-1 US/CA/AU; NULL = not tier-1 — Matt confirmed there is no tier 2/3 list to maintain).
 
 Same philosophy as scripts/resolve_holders.py: the default run only writes a proposal ledger at
 data/jurisdiction_map.json — a human can review/edit it — and nothing touches the DB until --apply.
@@ -178,7 +178,7 @@ def _summary(ledger: list[dict]) -> None:
     cont = Counter(e["continent"] for e in ledger)
     tier = Counter(e["jurisdiction_tier"] for e in ledger)
     print("  by continent:", dict(cont))
-    print("  tier-1 strings:", tier.get(1, 0), " | untier'd (pending Matt):", tier.get(None, 0))
+    print("  tier-1 strings:", tier.get(1, 0), " | not tier-1:", tier.get(None, 0))
 
 
 def apply() -> None:

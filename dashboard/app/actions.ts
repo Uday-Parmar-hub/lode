@@ -168,8 +168,9 @@ Columns:
   country           text          -- canonical country, e.g. 'Canada','United States','Chile'. Prefer this for country questions.
   state_province    text          -- primary state/province/region (NULL if country-level or multi-state)
   continent         text          -- 'North America'|'South America'|'Africa'|'Asia'|'Oceania'|'Europe'. Use for regional questions.
-  jurisdiction_tier smallint      -- jurisdiction risk tier: 1 = US/Canada/Australia (2 & 3 not yet assigned; currently NULL)
+  jurisdiction_tier smallint      -- binary tier: 1 = tier-1 (US/Canada/Australia); NULL = not tier-1 (Matt: no tier 2/3 list)
   stage             text          -- exploration | PEA | PFS | FS | development | producing (free text; use ILIKE)
+  is_producing      boolean       -- binary producing flag at time of source: true=producing, false=pre-production, NULL=unknown. Prefer this for "producing" questions.
   est_startup       text
   royalty_type      text          -- NSR | NPI | GSR/GROSS | metal stream | ... (free text; use ILIKE)
   rate              text          -- rate as stated, e.g. "2.00%", "0.7-1.3%", "US$5/t"

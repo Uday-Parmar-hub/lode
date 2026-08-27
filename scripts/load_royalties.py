@@ -58,12 +58,12 @@ def rate_pct(s: str | None) -> float | None:
 
 INSERT = """
 INSERT INTO royalties
- (project_name, operator, commodity, jurisdiction, stage,
+ (project_name, operator, commodity, jurisdiction, stage, is_producing,
   royalty_type, rate, rate_pct, holder, holder_note, royalty_available, extract_confidence,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_docid, source_label, source_url, source_date, source_quote, quote_verified,
   status, ingested_from)
- VALUES (%(project_name)s,%(operator)s,%(commodity)s,%(jurisdiction)s,%(stage)s,
+ VALUES (%(project_name)s,%(operator)s,%(commodity)s,%(jurisdiction)s,%(stage)s,%(is_producing)s,
   %(royalty_type)s,%(rate)s,%(rate_pct)s,%(holder)s,%(holder_note)s,'unknown',%(conf)s,
   %(partial_coverage)s,%(advance_payments)s,%(production_threshold)s,%(production_cap)s,%(buyback)s,%(step_down)s,%(rofr)s,%(features_note)s,
   %(regime)s,%(source_docid)s,%(source_label)s,%(source_url)s,%(source_date)s,%(source_quote)s,%(quote_verified)s,
@@ -99,6 +99,7 @@ for rec in pilot:
             "commodity": commodities(rec.get("commodity")),
             "jurisdiction": rec.get("jurisdiction"),
             "stage": rec.get("stage"),
+            "is_producing": rec.get("is_producing"),
             "royalty_type": roy.get("royalty_type"),
             "rate": roy.get("rate"),
             "rate_pct": rate_pct(roy.get("rate")),
