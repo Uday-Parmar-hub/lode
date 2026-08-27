@@ -16,6 +16,19 @@ const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const originLabel = (o: string | null): string =>
   o === "claude_human_edited" ? "human-edited" : o === "marketwatch" ? "MarketWatch" : o === "human" ? "human" : "AI";
 
+// Canonical feature taxonomy — the detail view shows ALL of these (dash when absent) for a consistent,
+// scannable checklist (Matt's ask). Grid/card chips still use featureList() below = present ones only.
+// (Two more — commodity-specific, area-of-interest — pending Matt's confirm + a re-extraction.)
+const FEATURES: { k: string; get: (r: Royalty) => string | null }[] = [
+  { k: "partial", get: (r) => (r.partial_coverage ? "burdens part of the property" : null) },
+  { k: "buy-down", get: (r) => r.buyback },
+  { k: "sliding", get: (r) => r.step_down },
+  { k: "cap", get: (r) => r.production_cap },
+  { k: "threshold", get: (r) => r.production_threshold },
+  { k: "advance", get: (r) => r.advance_payments },
+  { k: "ROFR", get: (r) => (r.rofr ? "right of first refusal / offer" : null) },
+];
+
 function featureList(r: Royalty): { k: string; v: string }[] {
   const out: { k: string; v: string }[] = [];
   if (r.buyback) out.push({ k: "buy-down", v: r.buyback });
@@ -298,7 +311,6 @@ function Cell({ k, v, gold }: { k: string; v: React.ReactNode; gold?: boolean })
 function Detail({ r, idx, total, onNav, onClose, onApply }: {
   r: Royalty; idx: number; total: number; onNav: (d: number) => void; onClose: () => void; onApply: (p: Partial<Royalty>) => void;
 }) {
-  const feats = featureList(r);
   const router = useRouter();
   const [draft, setDraft] = useState<ReviewPatch>({});
   const [saving, setSaving] = useState<string | null>(null);
@@ -415,9 +427,11 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
       </div>
 
       <div className="sec">Instrument features</div>
-      {feats.length ? (
-        <div className="feat">{feats.map((f, i) => <div key={i} className="frow"><span className="fk">{f.k}</span><span className="fv">{f.v}</span></div>)}</div>
-      ) : <div style={{ color: "var(--text-3)", fontSize: 13 }}>None disclosed — a straightforward instrument.</div>}
+      <div className="feat">
+        {FEATURES.map((f) => { const v = f.get(r); return (
+          <div key={f.k} className={`frow${v ? "" : " empty"}`}><span className="fk">{f.k}</span><span className="fv">{v ?? "—"}</span></div>
+        ); })}
+      </div>
       {r.features_note && <div className="fnote"><span className="fk">also check</span> {r.features_note}</div>}
 
       {versions && versions.length > 1 && (

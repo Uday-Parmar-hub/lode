@@ -196,7 +196,11 @@ tbody tr:hover .src{color:var(--gold-hi)}
 .feat{display:flex;flex-direction:column;gap:7px}
 .feat .frow{display:flex;gap:10px;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#100e0b}
 .feat .fk{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold-deep);text-transform:uppercase;letter-spacing:.06em;flex:none;width:96px}
-.feat .fv{color:var(--text-2)}
+.feat .fv{color:var(--text)}
+/* absent features: shown for a consistent checklist, but muted so present ones stand out */
+.feat .frow.empty{background:transparent;border-color:var(--line)}
+.feat .frow.empty .fk{color:var(--text-3)}
+.feat .frow.empty .fv{color:var(--text-3)}
 .fnote{margin-top:9px;font-size:12.5px;color:var(--text-2);line-height:1.5}
 .fnote .fk{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold-deep);text-transform:uppercase;letter-spacing:.06em;margin-right:8px}
 /* availability tint in the detail cell */
