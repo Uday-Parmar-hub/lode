@@ -11,10 +11,10 @@
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
-![Claude](https://img.shields.io/badge/Claude-Sonnet%20·%20Opus%20·%20Fable-D97757?style=for-the-badge&logo=anthropic&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude-Sonnet%20%C2%B7%20Opus%20%C2%B7%20Fable-D97757?style=for-the-badge&logo=anthropic&logoColor=white)
 <br/>
 ![Status](https://img.shields.io/badge/status-LIVE%20on%20Azure-2ea043?style=for-the-badge)
-![Scale](https://img.shields.io/badge/~700%20royalties-·%20~300%20assets-C6A15B?style=for-the-badge)
+![Scale](https://img.shields.io/badge/scale-~700%20royalties%20%C2%B7%20~300%20assets-C6A15B?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-internal-6e7681?style=for-the-badge)
 
 </div>
