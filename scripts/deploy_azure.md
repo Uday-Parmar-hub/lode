@@ -110,7 +110,7 @@ the same way. Reused: registry **ormwacr01** (`ormwacr01.azurecr.io`), env **mw-
 `transaction_timeout` line before restoring into the v16 server).
 
 **Live URL:** https://lode-dashboard.greenmeadow-9faacea3.canadacentral.azurecontainerapps.io/
-**Gate:** `matt` / `***REDACTED***` (env `LODE_BASIC_AUTH`)
+**Gate:** `matt` / `<preview password — value lives in the LODE_BASIC_AUTH Container App secret, not here>`
 
 Build the image in the cloud (no local Docker needed) — run in `dashboard/`:
 ```sh
@@ -125,7 +125,7 @@ az containerapp create -g RG-Marketwatch -n lode-dashboard --environment mw-env 
   --target-port 3000 --ingress external --cpu 0.5 --memory 1.0Gi --min-replicas 1 --max-replicas 1 \
   --env-vars DATABASE_URL="postgresql://lodeadmin:...@lode-pg-orr.postgres.database.azure.com:5432/lode?sslmode=require" \
              DATABASE_URL_RO="postgresql://lode_ro:...@lode-pg-orr.postgres.database.azure.com:5432/lode?sslmode=require" \
-             ANTHROPIC_API_KEY="..." LODE_BASIC_AUTH="matt:***REDACTED***"
+             ANTHROPIC_API_KEY="..." LODE_BASIC_AUTH="matt:<preview-password>"
 ```
 **Redeploy after code changes** (bump the tag, build, point the app at it):
 ```sh
