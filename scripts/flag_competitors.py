@@ -3,8 +3,8 @@
     python scripts/flag_competitors.py            # build the reviewable ledger (no DB writes)
     python scripts/flag_competitors.py --apply     # apply data/competitor_matches.json to the DB
 
-Matches each instrument's holder against OR's competitor list (~/OR_Competitor_List_2026-08-04.xlsx —
-10 royalty/streaming peers with aliases) and records which competitor, if any, holds it, in the derived
+Matches each instrument's holder against OR's competitor list (~/OR_Competitor_List_2026-09-01.xlsx —
+24 royalty/streaming peers with aliases) and records which competitor, if any, holds it, in the derived
 `competitor_holder` column. Approach (b): NON-DESTRUCTIVE — it never overwrites royalty_available or the
 human score/review layer; it only sets a derived flag the UI surfaces. Whether a competitor-held row
 should be forced 'not available' / score 0 is left for Matt to confirm before we wire it into scoring.
@@ -12,7 +12,8 @@ should be forced 'not available' / score 0 is left for Matt to confirm before we
 The matching is judgment (name variants, subsidiaries, holder DRIFT, mixed ownership), so Claude does it,
 precision-favoring, with two hard rules:
   • OR Royalties / Osisko Gold Royalties (and subsidiaries) is the user's OWN company — never a competitor.
-  • Use the CURRENT holder: "Royal Gold (formerly Sandstorm)" -> current is Royal Gold (not listed) -> null.
+  • Use the CURRENT holder, then map it to the list. Royal Gold is now ON the list (with "Sandstorm" as
+    an alias, since Royal Gold acquired Sandstorm), so a Royal Gold / Sandstorm holder -> "Royal Gold".
 Same philosophy as scripts/resolve_holders.py: default writes only a ledger; nothing touches the DB until
 --apply. The competitor file is confidential — it is read from $HOME and never committed.
 """
@@ -31,7 +32,7 @@ import pandas as pd  # noqa: E402
 from techreport import config, db  # noqa: E402
 
 LEDGER = config.ROOT / "data" / "competitor_matches.json"
-COMPETITOR_XLSX = pathlib.Path.home() / "OR_Competitor_List_2026-08-04.xlsx"
+COMPETITOR_XLSX = pathlib.Path.home() / "OR_Competitor_List_2026-09-01.xlsx"
 MODEL = "claude-opus-5"
 CHUNK = 120
 
@@ -61,16 +62,20 @@ CURRENT holder is that competitor — otherwise null. Rules, precision-favoring 
 1. OR ITSELF IS NOT A COMPETITOR. "OR Royalties", "Osisko Gold Royalties", "Osisko", "Osisko Bermuda",
    "OGR", "ORR", and any Osisko/OR subsidiary are the user's OWN company -> null. (Do not confuse
    "Osisko Gold Royalties" with the competitor "Gold Royalty Corp" — they are different companies.)
-2. CURRENT holder only. Holder notes often describe drift/assignment. Use whoever holds it NOW:
-   - "Royal Gold Inc. (formerly Sandstorm Gold Ltd.)" -> current is Royal Gold, which is NOT on the list -> null.
-   - "Sandstorm Gold (formerly Teck Resources)" -> current is Sandstorm -> "Sandstorm Gold Royalties".
+2. CURRENT holder only. Holder notes often describe drift/assignment. Use whoever holds it NOW, then
+   match that current holder to the list (aliases fold acquired peers into their current owner):
+   - "Royal Gold Inc. (formerly Sandstorm Gold Ltd.)" -> current is Royal Gold -> "Royal Gold".
+   - "Sandstorm Gold Ltd." -> Sandstorm was acquired by Royal Gold and is a Royal Gold alias -> "Royal Gold".
+   - "Maverix Metals" -> acquired by Triple Flag, a listed Triple Flag alias -> "Triple Flag Precious Metals".
 3. Match name variants / abbreviations / tickers / named subsidiaries of a listed competitor
    (e.g. "Franco-Nevada Canada Holdings Corp." -> "Franco-Nevada"; "Gold Royalty U.S. Corp." ->
    "Gold Royalty Corp"; "Royalty & Streaming Mexico SA (owned by Metalla)" -> "Metalla Royalty & Streaming").
 4. MIXED ownership: if OR/Osisko is one of the holders, the instrument is effectively OR's -> null,
    even if a competitor co-holds. If the holders are a competitor plus a non-OR third party, return the
    competitor.
-5. Companies that are royalty peers but NOT on the list (Royal Gold, Sailfish, Sandbox, Nomad, ...) -> null.
+5. Only the 24 companies on the list (and their aliases) count. A royalty peer that is genuinely NOT on
+   the list or an alias of one -> null. (Note: Royal Gold, Sailfish, and Versamet/Sandbox ARE now on the
+   list — do not null them.)
 
 Return one object per input, echoing the exact input in "holder"."""
 
