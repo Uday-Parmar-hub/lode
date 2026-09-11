@@ -1,7 +1,8 @@
 # LODE — Matt's feedback (2026-08-20, from the local demo + screenshots)
 
-Status: **captured, not started.** Work begins 2026-08-21. Rule stands: never auto-commit data changes
-without human validation. This is the roadmap for the part-time phase.
+Status: **captured 2026-08-20; most of buckets A + B and the memory-chain foundation have since shipped** —
+see the README's "What's next" for what actually remains. Kept here as the original feedback record. Rule
+stands: never auto-commit data changes without human validation.
 
 ## The emerging data model (from Matt's nomenclature)
 His renaming isn't cosmetic — it implies the real shape of the thing:

@@ -1,6 +1,6 @@
 # LODE — "Memory" / Instrument Version-Chain (design spec)
 
-Status: **draft, in build (feat/memory-chain)** · Owner: Uday · From Matt's direction (2026-08-25), design delegated to us.
+Status: **in build; foundation shipped (migration 003), now on `main`** · Owner: Uday · From Matt's direction (2026-08-25), design delegated to us.
 This doubles as the review doc for Matt/Elijah — react to the **Locked decisions** section.
 
 ## The problem
@@ -74,9 +74,9 @@ status = pending validation.
 4. **Matching:** AI proposes the link, human confirms; Fable-5 (or a second model) audits for missed dupes,
    never auto-merges. Omitted-by-latest instruments persist, flagged.
 
-## Build increments (this branch)
+## Build increments
 1. **Foundation (additive migration):** `instrument_id` (stable, backfilled from current dup_key groups), `origin`,
-   re-validation status. Non-destructive — the current tool keeps working. ← in progress
+   re-validation status. Non-destructive — the current tool keeps working. ← done (migration 003)
 2. **Append-on-edit:** review-save writes a new version row (origin `claude_human_edited`, dated) instead of updating.
 3. **History UI:** newest-on-top, per-instrument version panel, provenance badges, re-validation flag.
 4. **Incremental matching + Fable-5 audit.**
