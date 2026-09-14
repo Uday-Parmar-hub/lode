@@ -21,15 +21,16 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 from techreport import config, db  # noqa: E402
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--source", choices=["pilot", "edgar"], default="pilot",
+ap.add_argument("--source", choices=["pilot", "edgar", "marketwatch"], default="pilot",
                 help="which extraction ledger to load into `royalties`")
 args = ap.parse_args()
 
-# (ledger file, ingested_from tag). URLs: the pilot joins them from the archive manifest; the EDGAR
-# ledger already carries `url` per record.
+# (ledger file, ingested_from tag). URLs: the pilot joins them from the archive manifest; the EDGAR /
+# MarketWatch ledgers already carry `url` per record.
 LEDGERS = {
     "pilot": (config.ROOT / "data" / "royalty_pilot.json", "pilot"),
     "edgar": (config.ROOT / "data" / "edgar_royalties.json", "edgar"),
+    "marketwatch": (config.ROOT / "data" / "marketwatch_royalties.json", "marketwatch"),
 }
 LEDGER_PATH, INGESTED_FROM = LEDGERS[args.source]
 MANIFEST = config.CORPUS_DIR / "_archive_manifest.json"
