@@ -1,13 +1,16 @@
-"""Load the extraction pilot (data/royalty_pilot.json) into the `royalties` table.
+"""Load an extraction ledger into the `royalties` table.
 
-    python scripts/load_royalties.py
+    python scripts/load_royalties.py                 # the SEDAR/LSEG pilot (default)
+    python scripts/load_royalties.py --source edgar  # the EDGAR S-K 1300 ledger
 
 Each extracted royalty becomes one row (status='pending'). Availability + the human/score fields are
 left blank on purpose — they're analyst judgment, not in the report. After load, marks the newest source
-per (asset, holder, type) as is_primary so the grid can default to one row per asset-royalty.
+per (asset, holder, type) as is_primary WITHIN the loaded source (the global cross-source dedup is
+dedupe.py's job, via dup_key). Idempotent: ON CONFLICT (source_docid, project_name, holder, type) skips.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
 import re
@@ -17,7 +20,18 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from techreport import config, db  # noqa: E402
 
-PILOT = config.ROOT / "data" / "royalty_pilot.json"
+ap = argparse.ArgumentParser()
+ap.add_argument("--source", choices=["pilot", "edgar"], default="pilot",
+                help="which extraction ledger to load into `royalties`")
+args = ap.parse_args()
+
+# (ledger file, ingested_from tag). URLs: the pilot joins them from the archive manifest; the EDGAR
+# ledger already carries `url` per record.
+LEDGERS = {
+    "pilot": (config.ROOT / "data" / "royalty_pilot.json", "pilot"),
+    "edgar": (config.ROOT / "data" / "edgar_royalties.json", "edgar"),
+}
+LEDGER_PATH, INGESTED_FROM = LEDGERS[args.source]
 MANIFEST = config.CORPUS_DIR / "_archive_manifest.json"
 
 NAME2SYM = {"gold": "Au", "silver": "Ag", "copper": "Cu", "molybdenum": "Mo", "moly": "Mo",
@@ -67,14 +81,15 @@ INSERT INTO royalties
   %(royalty_type)s,%(rate)s,%(rate_pct)s,%(holder)s,%(holder_note)s,'unknown',%(conf)s,
   %(partial_coverage)s,%(advance_payments)s,%(production_threshold)s,%(production_cap)s,%(buyback)s,%(step_down)s,%(rofr)s,%(features_note)s,
   %(regime)s,%(source_docid)s,%(source_label)s,%(source_url)s,%(source_date)s,%(source_quote)s,%(quote_verified)s,
-  'pending','pilot')
+  'pending',%(ingested_from)s)
  ON CONFLICT (source_docid, project_name, holder, royalty_type) DO NOTHING
 """
 
+# is_primary within the loaded source; %(ing)s is bound, not interpolated.
 PRIMARY = """
 UPDATE royalties r SET is_primary = FALSE
-WHERE ingested_from = 'pilot' AND EXISTS (
-  SELECT 1 FROM royalties r2 WHERE r2.ingested_from='pilot'
+WHERE ingested_from = %(ing)s AND EXISTS (
+  SELECT 1 FROM royalties r2 WHERE r2.ingested_from=%(ing)s
     AND lower(r2.project_name)=lower(r.project_name)
     AND coalesce(lower(r2.holder),'')=coalesce(lower(r.holder),'')
     AND coalesce(r2.royalty_type,'')=coalesce(r.royalty_type,'')
@@ -82,14 +97,14 @@ WHERE ingested_from = 'pilot' AND EXISTS (
          OR (r2.source_date IS NOT DISTINCT FROM r.source_date AND r2.id > r.id)));
 """
 
-pilot = json.loads(PILOT.read_text(encoding="utf-8"))
+ledger = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
 url_by_doc = {}
 if MANIFEST.exists():
-    # the archive manifest carries an EDGAR archive URL for the S-K 1300 rows; join it in where present
+    # the pilot's archive manifest carries the EDGAR/PDF URL per docid; the EDGAR ledger carries `url` inline
     url_by_doc = {m["docid"]: m.get("url") for m in json.loads(MANIFEST.read_text()) if m.get("docid")}
 
 rows = []
-for rec in pilot:
+for rec in ledger:
     if not rec.get("has_third_party_royalty") or not rec.get("royalties"):
         continue
     for roy in rec["royalties"]:
@@ -118,19 +133,22 @@ for rec in pilot:
             "regime": rec.get("regime"),
             "source_docid": rec.get("docid"),
             "source_label": f"{rec.get('regime')} · {rec.get('date')}" if rec.get("date") else rec.get("regime"),
-            "source_url": url_by_doc.get(rec.get("docid")),
+            "source_url": rec.get("url") or url_by_doc.get(rec.get("docid")),
             "source_date": rec.get("date"),
             "source_quote": re.sub(r"</?b>", "", roy.get("quote") or ""),
             "quote_verified": bool(roy.get("quote_verified")),
+            "ingested_from": INGESTED_FROM,
         })
 
 with db.connect() as conn:
     with conn.cursor() as cur:
         cur.executemany(INSERT, rows)
         inserted = cur.rowcount
-        cur.execute(PRIMARY)
-        cur.execute("SELECT count(*), count(*) FILTER (WHERE is_primary) FROM royalties WHERE ingested_from='pilot'")
+        cur.execute(PRIMARY, {"ing": INGESTED_FROM})
+        cur.execute("SELECT count(*), count(*) FILTER (WHERE is_primary) FROM royalties WHERE ingested_from=%s",
+                    (INGESTED_FROM,))
         total, primary = cur.fetchone()
     conn.commit()
 
-print(f"prepared {len(rows)} royalties -> loaded {total} rows ({primary} primary after dedup)")
+print(f"[{args.source}] prepared {len(rows)} royalties -> {INGESTED_FROM} now has {total} rows "
+      f"({primary} primary within source; run dedupe.py for global cross-source dedup)")
