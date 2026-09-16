@@ -1,0 +1,42 @@
+[
+  {
+    "name": "berrio_anglogold",
+    "text": "37 Capital Inc. announced an update on its Berrio Project in Colombia. The Berrio Project carries an existing 2% net smelter return (NSR) royalty held by AngloGold Ashanti. As 37 Capital advances the project toward drilling, the company confirmed the AngloGold Ashanti royalty remains in place over the property.",
+    "expected": [{ "royalty_type": "NSR", "rate": "2%", "holder": "AngloGold Ashanti", "property": "Berrio" }]
+  },
+  {
+    "name": "barsele_agnico",
+    "text": "Gold Line Resources reported on the Barsele Gold Project in Sweden. As part of the consideration structure, Agnico Eagle Sweden AB retained a perpetual 2% NSR royalty on the Barsele Gold Project. The 2% NSR held by Agnico Eagle Sweden AB applies across the project area.",
+    "expected": [{ "royalty_type": "NSR", "rate": "2%", "holder": "Agnico Eagle Sweden", "property": "Barsele" }]
+  },
+  {
+    "name": "golden_rose_conquest",
+    "text": "Inventus Mining and Conquest Resources provided an update on the Golden Rose claims. Conquest Resources is receiving a 2.0% NSR royalty on Golden Rose mining claims not already subject to an existing royalty. The 2.0% NSR in favour of Conquest Resources covers the newly staked claims.",
+    "expected": [{ "royalty_type": "NSR", "rate": "2.0%", "holder": "Conquest Resources", "property": "Golden Rose" }]
+  },
+  {
+    "name": "farellon_thirdparty_vendor",
+    "text": "Red Metal Resources reported that it holds a 10% net smelter return (NSR) royalty on ore sold from the Farellon 1/8 concessions in Chile, reduced to a net 8.5% after a pre-existing 1.5% vendor royalty held by a third party. The third-party 1.5% vendor royalty on the Farellon copper project predates Red Metal's interest.",
+    "expected": [{ "royalty_type": "NSR", "rate": "1.5%", "holder": "vendor", "property": "Farellon" }]
+  },
+  {
+    "name": "guerrero_new_nsr",
+    "text": "A news release describes a new 3% NSR royalty created on the La Guadalupana / El Senor de los Guerreros property in Mexico. The 3% NSR royalty was granted to the vendors of the property and includes a 2% buyback option exercisable for US$3M.",
+    "expected": [{ "royalty_type": "NSR", "rate": "3%", "holder": "vendors", "property": "La Guadalupana" }]
+  },
+  {
+    "name": "lucky_shot_buyout",
+    "text": "Contango ORE announced it has bought out a 2% NSR royalty on its Lucky Shot gold project from Alaska Hardrock Inc. for total consideration of approximately US$16M. The 2% NSR previously held by Alaska Hardrock Inc. covered production from the Lucky Shot project.",
+    "expected": [{ "royalty_type": "NSR", "rate": "2%", "holder": "Alaska Hardrock", "property": "Lucky Shot" }]
+  },
+  {
+    "name": "negative_drill_results",
+    "text": "Northern Star Exploration announced high-grade drill results from its flagship project, including 12.5 metres grading 8.2 g/t gold from 145 metres downhole. The results extend the mineralized zone 200 metres along strike. Assays remain pending for six additional holes. No royalty arrangements were disclosed.",
+    "expected": []
+  },
+  {
+    "name": "negative_financing",
+    "text": "Junior Explorer Corp announced a bought-deal private placement to raise gross proceeds of C$8 million through the issuance of units at C$0.45 per unit. Proceeds will fund exploration at the company's projects and for general working capital. Each unit consists of one common share and one-half of a warrant.",
+    "expected": []
+  }
+]
