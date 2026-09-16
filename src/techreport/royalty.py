@@ -101,7 +101,7 @@ def extract(passages: str, operator_hint: str | None = None) -> RoyaltyExtractio
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     schema = RoyaltyExtraction.model_json_schema()
     msg = client.messages.create(
-        model=_MODEL, max_tokens=4000,
+        model=_MODEL, max_tokens=4000, temperature=0,  # deterministic: same passages -> same extraction
         tools=[{"name": "record_royalties",
                 "description": "Record the third-party royalties + asset facts from this report.",
                 "input_schema": schema}],

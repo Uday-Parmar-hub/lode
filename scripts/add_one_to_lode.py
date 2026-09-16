@@ -72,6 +72,19 @@ INSERT INTO royalties
 def main() -> None:
     raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8") if len(sys.argv) > 1 else sys.stdin.read()
     rec = json.loads(raw)
+    docid = rec.get("docid")
+
+    # Idempotent per press release: one PR -> one ingestion. If this story is already in LODE, don't
+    # re-extract (saves the Claude call) and don't duplicate — just report it's already there.
+    if docid:
+        with db.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT project_name FROM royalties WHERE source_docid = %s LIMIT 1", (docid,))
+                row = cur.fetchone()
+        if row:
+            print(json.dumps({"inserted": 0, "already": True, "project": row[0]}))
+            return
+
     text = rec.get("text") or ""
     ntext = re.sub(r"\s+", " ", text).strip().lower()
 
