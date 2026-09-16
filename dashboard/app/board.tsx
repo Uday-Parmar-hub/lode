@@ -10,7 +10,7 @@ const M: Record<string, string> = {
   Ni: "#8fb3a0", Zn: "#9aa3b2", PGE: "#b39cd0",
 };
 const METALS = ["Au", "Ag", "Cu", "Ni", "Zn", "Mo", "PGE"];
-const REGIMES = ["NI 43-101", "S-K 1300", "JORC"];
+const REGIMES = ["NI 43-101", "S-K 1300", "JORC", "MarketWatch"];
 const CONTINENTS = ["North America", "South America", "Africa", "Asia", "Oceania", "Europe"];
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const originLabel = (o: string | null): string =>
