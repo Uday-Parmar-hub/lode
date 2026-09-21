@@ -285,8 +285,10 @@ def test_landing_on_a_validated_instrument_requests_revalidation(tx):
 
 
 # ---------------------------------------------------------------- in-batch repeat collapse (pure)
-def _r(project, holder, rtype, rate):
-    return {"project_name": project, "holder": holder, "royalty_type": rtype, "rate": rate}
+def _r(project, holder, rtype, rate, **extra):
+    row = {"project_name": project, "holder": holder, "royalty_type": rtype, "rate": rate}
+    row.update(extra)
+    return row
 
 
 def test_collapse_repeats_drops_verbatim_repeats():
@@ -306,5 +308,14 @@ def test_collapse_repeats_matches_null_holders():
 def test_collapse_repeats_keeps_different_rates():
     """A royalty stack is not a duplicate — different rates are different instruments."""
     rows = [_r("Foo", "Vendors", "NSR", "2%"), _r("Foo", "Vendors", "NSR", "1%")]
+    kept, dropped = add_one.collapse_repeats(rows)
+    assert (len(kept), dropped) == (2, 0)
+
+
+def test_collapse_repeats_keeps_same_rate_with_different_terms():
+    """Two royalties can share a rate and differ in their terms — one capped, one not. Those are
+    different instruments, so the collapse key must include the structured feature fields."""
+    rows = [_r("Foo", "Vendors", "NSR", "2%", production_cap="1Moz"),
+            _r("Foo", "Vendors", "NSR", "2%", production_cap=None)]
     kept, dropped = add_one.collapse_repeats(rows)
     assert (len(kept), dropped) == (2, 0)

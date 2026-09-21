@@ -73,17 +73,28 @@ INSERT INTO royalties
 """
 
 
+# Every field that distinguishes one royalty from another on the write path. Keyed on all of them so
+# collapsing is genuinely lossless: on (project, holder, type, rate) alone, two royalties that agree on
+# the rate but differ in their TERMS — one capped, one not; one with a buyback, one without — would look
+# like duplicates and the second would be silently dropped. Those are different instruments.
+_REPEAT_KEY_FIELDS = (
+    "project_name", "holder", "royalty_type", "rate",
+    "partial_coverage", "advance_payments", "production_threshold", "production_cap",
+    "buyback", "step_down", "rofr", "features_note",
+)
+
+
 def collapse_repeats(rows: list[dict]) -> tuple[list[dict], int]:
     """Drop royalties repeated verbatim within one extraction. Returns (kept, dropped_count).
 
     The unique index compares NULLs as DISTINCT, so ON CONFLICT never fires when `holder` is NULL —
     which is how the corpus accumulated the same royalty up to 14 times from a single document. This
-    compares the tuple directly, so a NULL holder still matches a NULL holder.
+    compares the tuples directly, so a NULL field still matches a NULL field.
     """
     seen: set[tuple] = set()
     kept: list[dict] = []
     for r in rows:
-        key = (r["project_name"], r["holder"], r["royalty_type"], r["rate"])
+        key = tuple(r.get(f) for f in _REPEAT_KEY_FIELDS)
         if key in seen:
             continue
         seen.add(key)
@@ -222,7 +233,10 @@ def main() -> None:
             "features_note": getattr(r, "other_terms", None),
             "regime": "MarketWatch",
             "source_docid": rec.get("docid"),
-            "source_label": "MarketWatch · " + (rec.get("date") or ""),
+            # Records WHO staged this release, not just when — the bridge is a human-gated action and
+            # nothing else in either database captured the actor.
+            "source_label": " · ".join(
+                x for x in ("MarketWatch", rec.get("date") or None, rec.get("actor") or None) if x),
             "source_url": rec.get("url"),
             "source_date": rec.get("date"),
             "source_quote": re.sub(r"</?b>", "", r.quote or ""),
