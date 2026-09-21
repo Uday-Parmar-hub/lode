@@ -282,3 +282,29 @@ def test_landing_on_a_validated_instrument_requests_revalidation(tx):
     tx.execute("select count(*) from royalties where source_docid in (%s,%s) and needs_revalidation",
                (report_doc, pr_doc))
     assert tx.fetchone()[0] >= 1
+
+
+# ---------------------------------------------------------------- in-batch repeat collapse (pure)
+def _r(project, holder, rtype, rate):
+    return {"project_name": project, "holder": holder, "royalty_type": rtype, "rate": rate}
+
+
+def test_collapse_repeats_drops_verbatim_repeats():
+    rows = [_r("Foo", "AngloGold", "NSR", "2%"), _r("Foo", "AngloGold", "NSR", "2%")]
+    kept, dropped = add_one.collapse_repeats(rows)
+    assert (len(kept), dropped) == (1, 1)
+
+
+def test_collapse_repeats_matches_null_holders():
+    """The case that actually bit the corpus: a NULL holder is invisible to the unique index, so the
+    same royalty re-inserted on every load (Salares Norte's 2% NSR: 14 rows from one document)."""
+    rows = [_r("Salares Norte", None, "NSR", "2%"), _r("Salares Norte", None, "NSR", "2%")]
+    kept, dropped = add_one.collapse_repeats(rows)
+    assert (len(kept), dropped) == (1, 1)
+
+
+def test_collapse_repeats_keeps_different_rates():
+    """A royalty stack is not a duplicate — different rates are different instruments."""
+    rows = [_r("Foo", "Vendors", "NSR", "2%"), _r("Foo", "Vendors", "NSR", "1%")]
+    kept, dropped = add_one.collapse_repeats(rows)
+    assert (len(kept), dropped) == (2, 0)

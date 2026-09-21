@@ -73,6 +73,24 @@ INSERT INTO royalties
 """
 
 
+def collapse_repeats(rows: list[dict]) -> tuple[list[dict], int]:
+    """Drop royalties repeated verbatim within one extraction. Returns (kept, dropped_count).
+
+    The unique index compares NULLs as DISTINCT, so ON CONFLICT never fires when `holder` is NULL —
+    which is how the corpus accumulated the same royalty up to 14 times from a single document. This
+    compares the tuple directly, so a NULL holder still matches a NULL holder.
+    """
+    seen: set[tuple] = set()
+    kept: list[dict] = []
+    for r in rows:
+        key = (r["project_name"], r["holder"], r["royalty_type"], r["rate"])
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(r)
+    return kept, len(rows) - len(kept)
+
+
 def _dedupe_module():
     """Load scripts/dedupe.py as a module so we reuse its canonical dup-key SQL rather than
     re-implementing it here (main() is __main__-guarded, so importing has no side effects).
@@ -211,6 +229,9 @@ def main() -> None:
             "quote_verified": bool(r.quote) and re.sub(r"\s+", " ", (r.quote or "")).strip().lower()[:80] in ntext,
         })
 
+    extracted = len(rows)
+    rows, repeats = collapse_repeats(rows)
+
     stored: list[dict] = []
     skipped: list[dict] = []
     chain = {"instruments": 0, "joined_existing": 0, "flagged_revalidation": 0}
@@ -233,11 +254,13 @@ def main() -> None:
 
     out = {
         "inserted": len(stored),
-        "extracted": len(rows),
+        "extracted": extracted,
         "project": ex.project_name,
         "royalties": [{"type": r.royalty_type, "rate": r.rate, "holder": r.holder} for r in ex.royalties],
         **chain,
     }
+    if repeats:
+        out["repeats_collapsed"] = repeats   # identical royalties stated twice in one release
     if skipped:
         out["skipped"] = len(skipped)
         out["skipped_detail"] = [
