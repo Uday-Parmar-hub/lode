@@ -334,7 +334,21 @@ function Detail({ r, idx, total, onNav, onClose, onApply }: {
   }, [r.instrument_id, r.id]);
 
   // Fact edit (memory-chain): append a new version with the analyst's corrections, then re-fetch.
-  const FACT_KEYS: (keyof FactEdit)[] = ["royalty_type", "rate", "holder", "holder_note"];
+  //
+  // EVERY FactEdit field must be sent with its effective value (edit ?? current), not just the four
+  // that have an input. saveFactEdit binds each field as `?? null` into the new version and then makes
+  // that version the sole primary of the chain, so a field left out of this list is DESTROYED on the
+  // analyst's first correction — a holder fix used to wipe buyback, production_cap, the thresholds and
+  // features_note off the row that then became the surfaced one. Same discipline as EDITABLE below.
+  //
+  // The Record type is the guard: it requires one entry per FactEdit key, so adding a field to
+  // FactEdit without listing it here fails the build instead of silently nulling it in production.
+  const FACT_FIELDS: Record<keyof FactEdit, true> = {
+    royalty_type: true, rate: true, holder: true, holder_note: true,
+    partial_coverage: true, advance_payments: true, production_threshold: true,
+    production_cap: true, buyback: true, step_down: true, rofr: true, features_note: true,
+  };
+  const FACT_KEYS = Object.keys(FACT_FIELDS) as (keyof FactEdit)[];
   const fcur = <K extends keyof FactEdit>(k: K): FactEdit[K] =>
     (fx[k] !== undefined ? fx[k] : (r as unknown as Record<string, unknown>)[k === "royalty_type" ? "type" : k]) as FactEdit[K];
   const saveFacts = async () => {
