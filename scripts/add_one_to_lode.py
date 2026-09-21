@@ -13,7 +13,6 @@ the local demo; nothing else is touched.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import pathlib
 import re
@@ -21,7 +20,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from techreport import db, royalty  # noqa: E402
+from techreport import chain, db, royalty  # noqa: E402
 
 NAME2SYM = {"gold": "Au", "silver": "Ag", "copper": "Cu", "molybdenum": "Mo", "moly": "Mo",
             "nickel": "Ni", "zinc": "Zn", "lead": "Pb", "cobalt": "Co", "uranium": "U",
@@ -102,90 +101,6 @@ def collapse_repeats(rows: list[dict]) -> tuple[list[dict], int]:
     return kept, len(rows) - len(kept)
 
 
-def _dedupe_module():
-    """Load scripts/dedupe.py as a module so we reuse its canonical dup-key SQL rather than
-    re-implementing it here (main() is __main__-guarded, so importing has no side effects).
-    One definition of "same real-world royalty" — if dedupe.py's key changes, this follows."""
-    path = pathlib.Path(__file__).resolve().parent / "dedupe.py"
-    spec = importlib.util.spec_from_file_location("dedupe", path)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def _link_into_memory_chain(cur, docid: str) -> dict:
-    """Give the just-inserted rows their dup_key / instrument_id / is_primary, using the SAME canonical
-    key as scripts/dedupe.py, scoped to the groups this PR touches.
-
-    Without this a bridged royalty arrives with a NULL instrument_id, and the dashboard's edit path
-    (saveFactEdit) demotes the old version with `WHERE instrument_id = <null>` — which matches nothing,
-    so the analyst's first correction leaves TWO is_primary rows for one royalty. Linking here also
-    collapses the PR into an existing technical-report instrument when LODE already has that royalty,
-    which is the cross-source corroboration the bridge exists to produce.
-
-    A full `python scripts/dedupe.py` run stays the authority (it also applies the semantic ledgers);
-    this is the same deterministic assignment, done for one PR at insert time.
-    """
-    dd = _dedupe_module()
-    # load_asset_aliases creates a temp table without IF NOT EXISTS, so guard it: this function may be
-    # called more than once inside one transaction (two releases linked together, or a test).
-    cur.execute("select to_regclass('asset_alias') is not null")
-    if not cur.fetchone()[0]:
-        dd.load_asset_aliases(cur)  # + the asset-rename ledger if present; no-op without one
-
-    cur.execute(f"update royalties set dup_key = {dd.DUPKEY_SQL} where source_docid = %s", (docid,))
-    cur.execute("select distinct dup_key from royalties where source_docid = %s and dup_key is not null",
-                (docid,))
-    keys = [r[0] for r in cur.fetchall()]
-    if not keys:
-        return {"instruments": 0, "joined_existing": 0, "flagged_revalidation": 0}
-
-    # How many of these groups already existed (i.e. this PR corroborates a royalty LODE already had)?
-    cur.execute("""select count(*) from (
-                     select dup_key from royalties
-                      where dup_key = any(%s) and source_docid <> %s
-                      group by dup_key) g""", (keys, docid))
-    joined = cur.fetchone()[0]
-
-    # instrument_id: REUSE the group's existing id where there is one, mint only for a new instrument.
-    # Mirrors dedupe.py. Restricted to rows that have none, so established rows are never rewritten.
-    cur.execute("""
-        with grp as (
-          select dup_key,
-                 coalesce(max(instrument_id) filter (where instrument_id is not null),
-                          'inst_'||substr(md5(dup_key||clock_timestamp()::text||random()::text),1,20)) as iid
-            from royalties where dup_key = any(%s) group by dup_key
-        )
-        update royalties r set instrument_id = grp.iid
-          from grp where r.dup_key = grp.dup_key and r.instrument_id is null
-    """, (keys,))
-
-    # is_primary within the affected groups only — same ranking dedupe.py uses.
-    cur.execute("""
-        with ranked as (
-          select id, row_number() over (
-                   partition by dup_key
-                   order by source_date desc nulls last, quote_verified desc,
-                            extract_confidence desc nulls last, id desc) as rn
-            from royalties where dup_key = any(%s)
-        )
-        update royalties r set is_primary = (ranked.rn = 1) from ranked where ranked.id = r.id
-    """, (keys,))
-
-    # A new source landing on an already-validated instrument must go back for re-review
-    # (migration 003's contract). Flag the surfaced row, as apply_audit_fixes.py does.
-    cur.execute("""
-        update royalties r set needs_revalidation = true
-         where r.dup_key = any(%s) and r.is_primary
-           and exists (select 1 from royalties v
-                        where v.dup_key = r.dup_key and v.status = 'validated')
-    """, (keys,))
-    flagged = cur.rowcount
-
-    return {"instruments": len(keys), "joined_existing": joined, "flagged_revalidation": flagged}
-
-
 def main() -> None:
     raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8") if len(sys.argv) > 1 else sys.stdin.read()
     rec = json.loads(raw)
@@ -210,7 +125,10 @@ def main() -> None:
         print(json.dumps({"inserted": 0, "reason": "no royalty passage found in this release"}))
         return
 
-    ex = royalty.extract(passages, operator_hint=rec.get("company") or None)
+    # issuer_hint, NOT operator_hint: the wire item tells us who ISSUED the release, not who
+    # operates the property, and asserting the issuer is the operator excludes a royalty the
+    # issuer itself holds — which is exactly the kind this tool exists to find.
+    ex = royalty.extract(passages, issuer_hint=rec.get("company") or None)
     rows = []
     for r in ex.royalties:
         rows.append({
@@ -248,7 +166,7 @@ def main() -> None:
 
     stored: list[dict] = []
     skipped: list[dict] = []
-    chain = {"instruments": 0, "joined_existing": 0, "flagged_revalidation": 0}
+    linked = {"instruments": 0, "joined_existing": 0, "flagged_revalidation": 0}
     if rows:
         with db.connect() as conn:
             with conn.cursor() as cur:
@@ -263,7 +181,8 @@ def main() -> None:
                     cur.execute(INSERT, r)
                     (stored if cur.rowcount == 1 else skipped).append(r)
                 if stored and docid:
-                    chain = _link_into_memory_chain(cur, docid)
+                            # dup_key / instrument_id / is_primary, by the same definitions dedupe.py uses.
+                    linked = chain.link(cur, "source_docid = %s", (docid,))
             conn.commit()
 
     out = {
@@ -271,7 +190,7 @@ def main() -> None:
         "extracted": extracted,
         "project": ex.project_name,
         "royalties": [{"type": r.royalty_type, "rate": r.rate, "holder": r.holder} for r in ex.royalties],
-        **chain,
+        **linked,
     }
     if repeats:
         out["repeats_collapsed"] = repeats   # identical royalties stated twice in one release

@@ -71,7 +71,8 @@ for st in stories:
             rec.update(status="no_passages", has_third_party_royalty=False, royalties=[])
         else:
             try:
-                ex = royalty.extract(passages, operator_hint=operator or None)
+                # issuer_hint: a press release names its issuer, not necessarily the operator.
+                ex = royalty.extract(passages, issuer_hint=operator or None)
                 roys = []
                 for r in ex.royalties:
                     d = r.model_dump()

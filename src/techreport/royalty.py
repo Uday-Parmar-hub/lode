@@ -96,8 +96,42 @@ REPORT PASSAGES (royalty-relevant excerpts):
 {passages}"""
 
 
-def extract(passages: str, operator_hint: str | None = None) -> RoyaltyExtraction:
-    """Claude structured extraction over the royalty passages -> validated RoyaltyExtraction."""
+def _build_prompt(passages: str, operator_hint: str | None, issuer_hint: str | None) -> str:
+    """The report prompt, plus the press-release framing only when an issuer is named."""
+    content = _PROMPT.format(operator_hint=operator_hint or "unknown", passages=passages)
+    if not issuer_hint:
+        return content
+    note = _ISSUER_NOTE.format(issuer=issuer_hint)
+    # insert before the passages so the instruction precedes the text it applies to
+    return content.replace("\nREPORT PASSAGES", note + "\n\nREPORT PASSAGES", 1)
+
+
+# Added ONLY for news/press-release input. The base prompt is written for a technical report, where
+# "held by a party OTHER than the current operator" is the right test and the operator is known. On a
+# press release the issuer's role is unknown, and passing the issuer as operator_hint inverted the rule:
+# for a royalty company announcing an acquisition the issuer IS the holder, so the royalty the release
+# is actually about got excluded and an incidental encumbrance was staged instead. LODE tracks exactly
+# those competitor-held royalties (hence the competitor_holder column), so they must be included.
+_ISSUER_NOTE = """
+
+IMPORTANT — this text is a PRESS RELEASE issued by: {issuer}. It is not a technical report, and the \
+issuer's role is NOT given. The issuer may operate the property, may be the royalty HOLDER (e.g. a \
+royalty company announcing an acquisition, or a vendor retaining a royalty), or may be neither. Do NOT \
+assume the issuer is the operator — work out each royalty's holder and the property's operator from the \
+text itself. A royalty HELD BY the issuer over a property it does not operate is still a third-party \
+royalty for our purposes and must be included: it is precisely the kind we would buy."""
+
+
+def extract(passages: str, operator_hint: str | None = None,
+            issuer_hint: str | None = None) -> RoyaltyExtraction:
+    """Claude structured extraction over the royalty passages -> validated RoyaltyExtraction.
+
+    operator_hint: the property's operator, when we actually know it (technical reports).
+    issuer_hint:   the issuer of a press release, whose role is unknown. Pass this INSTEAD of
+                   operator_hint for news, never both — asserting a false operator is what inverts
+                   the third-party test. With issuer_hint unset the prompt is byte-identical to the
+                   technical-report one, so report extraction is unchanged.
+    """
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     schema = RoyaltyExtraction.model_json_schema()
     msg = client.messages.create(
@@ -106,8 +140,7 @@ def extract(passages: str, operator_hint: str | None = None) -> RoyaltyExtractio
                 "description": "Record the third-party royalties + asset facts from this report.",
                 "input_schema": schema}],
         tool_choice={"type": "tool", "name": "record_royalties"},
-        messages=[{"role": "user",
-                   "content": _PROMPT.format(operator_hint=operator_hint or "unknown", passages=passages)}],
+        messages=[{"role": "user", "content": _build_prompt(passages, operator_hint, issuer_hint)}],
     )
     block = next(b for b in msg.content if b.type == "tool_use")
     data = dict(block.input)

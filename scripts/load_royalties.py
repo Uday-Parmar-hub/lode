@@ -18,7 +18,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from techreport import config, db  # noqa: E402
+from techreport import chain, config, db  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--source", choices=["pilot", "edgar", "marketwatch"], default="pilot",
@@ -77,12 +77,12 @@ INSERT INTO royalties
   royalty_type, rate, rate_pct, holder, holder_note, royalty_available, extract_confidence,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_docid, source_label, source_url, source_date, source_quote, quote_verified,
-  status, ingested_from)
+  status, ingested_from, origin)
  VALUES (%(project_name)s,%(operator)s,%(commodity)s,%(jurisdiction)s,%(stage)s,%(is_producing)s,
   %(royalty_type)s,%(rate)s,%(rate_pct)s,%(holder)s,%(holder_note)s,'unknown',%(conf)s,
   %(partial_coverage)s,%(advance_payments)s,%(production_threshold)s,%(production_cap)s,%(buyback)s,%(step_down)s,%(rofr)s,%(features_note)s,
   %(regime)s,%(source_docid)s,%(source_label)s,%(source_url)s,%(source_date)s,%(source_quote)s,%(quote_verified)s,
-  'pending',%(ingested_from)s)
+  'pending',%(ingested_from)s,%(origin)s)
  ON CONFLICT (source_docid, project_name, holder, royalty_type) DO NOTHING
 """
 
@@ -139,6 +139,9 @@ for rec in ledger:
             "source_quote": re.sub(r"</?b>", "", roy.get("quote") or ""),
             "quote_verified": bool(roy.get("quote_verified")),
             "ingested_from": INGESTED_FROM,
+            # migration 003's convention. This path set no origin at all, so batch-loaded rows were
+            # indistinguishable from un-provenanced ones in the dashboard.
+            "origin": "marketwatch" if INGESTED_FROM == "marketwatch" else "claude",
         })
 
 with db.connect() as conn:
@@ -146,10 +149,18 @@ with db.connect() as conn:
         cur.executemany(INSERT, rows)
         inserted = cur.rowcount
         cur.execute(PRIMARY, {"ing": INGESTED_FROM})
+        # Give the loaded rows their dup_key / instrument_id / is_primary now, instead of leaving them
+        # orphaned until someone remembers to run dedupe.py. A NULL instrument_id breaks the dashboard's
+        # edit path — its demote matches nothing and the first correction leaves two current versions of
+        # one royalty. dedupe.py stays the authority (it also applies the semantic ledgers).
+        docids = sorted({r["source_docid"] for r in rows if r.get("source_docid")})
+        linked = chain.link(cur, "source_docid = any(%s)", (docids,)) if docids else {}
         cur.execute("SELECT count(*), count(*) FILTER (WHERE is_primary) FROM royalties WHERE ingested_from=%s",
                     (INGESTED_FROM,))
         total, primary = cur.fetchone()
     conn.commit()
 
 print(f"[{args.source}] prepared {len(rows)} royalties -> {INGESTED_FROM} now has {total} rows "
-      f"({primary} primary within source; run dedupe.py for global cross-source dedup)")
+      f"({primary} primary within source; {linked.get('instruments', 0)} instruments linked, "
+      f"{linked.get('joined_existing', 0)} joining an existing one; "
+      f"run dedupe.py for global cross-source dedup + the semantic ledgers)")

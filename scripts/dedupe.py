@@ -26,75 +26,20 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from techreport import config, db  # noqa: E402
+# The dup-key definition, the primary ordering and the asset-alias staging now live in
+# techreport.chain, so the button and the batch loader use the same ones rather than copies.
+from techreport.chain import (  # noqa: E402
+    ASSET_LEDGER, DUPKEY_SQL, PRIMARY_ORDER_SQL, load_asset_aliases,
+)
 
 # Semantic ledgers (LLM-proposed, human-reviewable). Both optional — without them dedupe.py is the
 # pure deterministic pass 1. holder_merges = pass 2 (resolve_holders.py); asset_aliases = pass 2b
 # (resolve_assets.py, asset renames applied when building the key).
 LEDGER = config.ROOT / "data" / "holder_merges.json"
-ASSET_LEDGER = config.ROOT / "data" / "asset_aliases.json"
 # audit-confirmed merges (Fable-5 duplicate audit -> apply_audit_fixes.py), same {canonical_id,member_ids}
 # format as holder_merges but a SEPARATE file so re-running resolve_holders.py can't clobber them.
 AUDIT_LEDGER = config.ROOT / "data" / "audit_merges_ledger.json"
 
-# accented -> ascii fold (Kandiolé -> kandiole, etc.)
-_ACC = "'áàâäãéèêëíìîïóòôöõúùûüçñ','aaaaaeeeeiiiiooooouuuucn'"
-
-# normalized asset: drop parentheticals, fold accents, keep only [a-z0-9]
-_NASSET = (
-    r"regexp_replace(translate("
-    r"regexp_replace(lower(project_name),'\(.*?\)','','g'),"
-    f"{_ACC}),'[^a-z0-9]+','','g')"
-)
-
-# royalty-type FAMILY — collapses spelling variants ("NPI"/"Net Profit Interest"/"NPI (…)")
-# but keeps genuinely different instruments (NSR vs NPI vs stream vs …) distinct, so a
-# multi-instrument asset like Casino is not over-merged.
-_CTYPE = (
-    "case "
-    "when lower(coalesce(royalty_type,'')) ~ 'stream' then 'STREAM' "
-    "when lower(coalesce(royalty_type,'')) ~ 'nsr|net smelter' then 'NSR' "
-    "when lower(coalesce(royalty_type,'')) ~ 'npi|net prof|net proc' then 'NPI' "
-    "when lower(coalesce(royalty_type,'')) ~ 'gross|gor|gsr|overrid|gvr' then 'GROSS' "
-    "when lower(coalesce(royalty_type,'')) ~ 'advance|amr' then 'AMR' "
-    "when lower(coalesce(royalty_type,'')) ~ 'production payment' then 'PRODPMT' "
-    "else lower(coalesce(royalty_type,'?')) end"
-)
-
-# rate: the parsed % where we have one, else a normalized rate string (catches "US$5/t" re-reports)
-_RKEY = r"coalesce(rate_pct::text, regexp_replace(lower(coalesce(rate,'')),'[^a-z0-9.]','','g'))"
-
-# normalized holder: drop parentheticals + legal-form/generic suffixes, fold accents, keep the
-# distinctive name. Distinct parties stay distinct; only spelling variants of one party merge.
-_NHOLD = (
-    r"regexp_replace(regexp_replace(translate("
-    r"regexp_replace(lower(coalesce(holder,'')),'\(.*?\)','','g'),"
-    f"{_ACC}),"
-    r"'\y(inc|incorporated|ltd|limited|llc|l\.l\.c|corp|corporation|company|co|plc|sarl|"
-    r"s\.a\.r\.l|sa|s\.a|nl|ag|pty|group|holdings?|resources?|minerals?|mining)\y','','g'),"
-    r"'[^a-z0-9]+','','g')"
-)
-
-# pass 2b: remap an asset's normalized key to its group's canonical key (via the asset_alias temp table),
-# so a renamed asset's royalties share the key with the canonical name's. No ledger -> empty table -> no-op.
-_ASSET = f"coalesce((select aa.to_key from asset_alias aa where aa.from_key = {_NASSET}), {_NASSET})"
-DUPKEY_SQL = f"({_ASSET}||'|'||{_CTYPE}||'|'||{_RKEY}||'|'||{_NHOLD})"
-
-
-def load_asset_aliases(cur) -> int:
-    """Stage the asset-rename ledger into a temp table used by DUPKEY_SQL. Returns member rows mapped."""
-    cur.execute("create temp table asset_alias (from_key text primary key, to_key text) on commit drop")
-    if not ASSET_LEDGER.exists():
-        return 0
-    groups = json.loads(ASSET_LEDGER.read_text(encoding="utf-8"))
-    n = 0
-    for g in groups:
-        ck = g["canonical_key"]
-        for k in g["member_keys"]:
-            if k == ck:
-                continue
-            cur.execute("insert into asset_alias(from_key,to_key) values (%s,%s) on conflict do nothing", (k, ck))
-            n += 1
-    return n
 
 
 def apply_ledger(cur) -> int:
@@ -140,12 +85,10 @@ def main() -> None:
             merges = apply_ledger(cur)  # semantic pass 2 (no-op if the ledger is absent)
             # surface the newest / most-trustworthy row per dup_key; retain the rest (is_primary=false)
             cur.execute(
-                """
+                f"""
                 with ranked as (
                   select id, row_number() over (
-                    partition by dup_key
-                    order by source_date desc nulls last, quote_verified desc,
-                             extract_confidence desc nulls last, id desc
+                    partition by dup_key order by {PRIMARY_ORDER_SQL}
                   ) as rn
                   from royalties
                 )

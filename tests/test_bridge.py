@@ -37,6 +37,7 @@ def _load_module(name: str, path: pathlib.Path):
 
 
 add_one = _load_module("add_one_to_lode", HELPER)
+from techreport import chain  # noqa: E402  (shared identity/memory-chain logic)
 
 
 # ---------------------------------------------------------------- pure functions (always run)
@@ -184,7 +185,7 @@ def test_inserted_row_is_linked_into_the_memory_chain(tx):
     docid = f"pytest-{uuid.uuid4().hex[:8]}"
     tx.execute(add_one.INSERT, _roy(project_name="Chain Test Project", holder="Someone Ltd.",
                                     royalty_type="NSR", rate="2%", rate_pct=2, source_docid=docid))
-    add_one._link_into_memory_chain(tx, docid)
+    chain.link(tx, "source_docid = %s", (docid,))
     tx.execute("select instrument_id, dup_key, origin, is_primary from royalties where source_docid=%s",
                (docid,))
     instrument_id, dup_key, origin, is_primary = tx.fetchone()
@@ -201,15 +202,15 @@ def test_bridged_row_joins_an_existing_instrument(tx):
     shared = dict(project_name="Joined Project", holder="Alaska Hardrock, Inc.",
                   royalty_type="NSR", rate="2%", rate_pct=2)
     tx.execute(add_one.INSERT, _roy(source_docid=report_doc, **shared))
-    add_one._link_into_memory_chain(tx, report_doc)
+    chain.link(tx, "source_docid = %s", (report_doc,))
     tx.execute("select instrument_id from royalties where source_docid=%s", (report_doc,))
     existing = tx.fetchone()[0]
 
     tx.execute(add_one.INSERT, _roy(source_docid=pr_doc, **shared))
-    chain = add_one._link_into_memory_chain(tx, pr_doc)
+    linked = chain.link(tx, "source_docid = %s", (pr_doc,))
     tx.execute("select instrument_id from royalties where source_docid=%s", (pr_doc,))
     assert tx.fetchone()[0] == existing          # same real-world royalty -> one instrument
-    assert chain["joined_existing"] == 1
+    assert linked["joined_existing"] == 1
 
 
 def test_first_edit_leaves_exactly_one_primary(tx):
@@ -218,7 +219,7 @@ def test_first_edit_leaves_exactly_one_primary(tx):
     docid = f"pytest-{uuid.uuid4().hex[:8]}"
     tx.execute(add_one.INSERT, _roy(project_name="Edit Test Project", holder="Holder Ltd.",
                                     royalty_type="NSR", rate="2%", rate_pct=2, source_docid=docid))
-    add_one._link_into_memory_chain(tx, docid)
+    chain.link(tx, "source_docid = %s", (docid,))
     tx.execute("select id, dup_key from royalties where source_docid=%s", (docid,))
     rid, dup_key = tx.fetchone()
 
@@ -236,7 +237,7 @@ def test_edit_duplicates_when_instrument_id_is_missing(tx):
     docid = f"pytest-{uuid.uuid4().hex[:8]}"
     tx.execute(add_one.INSERT, _roy(project_name="Orphan Test Project", holder="Holder Ltd.",
                                     royalty_type="NSR", rate="2%", rate_pct=2, source_docid=docid))
-    add_one._link_into_memory_chain(tx, docid)
+    chain.link(tx, "source_docid = %s", (docid,))
     tx.execute("select id, dup_key from royalties where source_docid=%s", (docid,))
     rid, dup_key = tx.fetchone()
     tx.execute("update royalties set instrument_id = null where id=%s", (rid,))  # simulate the old insert
@@ -273,12 +274,12 @@ def test_landing_on_a_validated_instrument_requests_revalidation(tx):
     shared = dict(project_name="Validated Project", holder="Holder Ltd.",
                   royalty_type="NSR", rate="2%", rate_pct=2)
     tx.execute(add_one.INSERT, _roy(source_docid=report_doc, **shared))
-    add_one._link_into_memory_chain(tx, report_doc)
+    chain.link(tx, "source_docid = %s", (report_doc,))
     tx.execute("update royalties set status='validated' where source_docid=%s", (report_doc,))
 
     tx.execute(add_one.INSERT, _roy(source_docid=pr_doc, **shared))
-    chain = add_one._link_into_memory_chain(tx, pr_doc)
-    assert chain["flagged_revalidation"] >= 1
+    linked = chain.link(tx, "source_docid = %s", (pr_doc,))
+    assert linked["flagged_revalidation"] >= 1
     tx.execute("select count(*) from royalties where source_docid in (%s,%s) and needs_revalidation",
                (report_doc, pr_doc))
     assert tx.fetchone()[0] >= 1
