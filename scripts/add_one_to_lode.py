@@ -2,14 +2,18 @@
 
 Backs the dashboard "Add to LODE" button. Reads a JSON object (argv[1] = a file path, or stdin) —
 {docid, company, date, url, text} — extracts royalties with royalty.extract, inserts each into
-`royalties` (ingested_from='marketwatch', status='pending', is_primary=true) in the DATABASE_URL DB,
-and prints a JSON result. Point DATABASE_URL at lode_test for the local demo; nothing else is touched.
+`royalties` (ingested_from='marketwatch', origin='marketwatch', status='pending') in the DATABASE_URL
+DB, links them into the memory chain (dup_key / instrument_id / is_primary, via dedupe.py's canonical
+key), and prints a JSON result. `text` must be the PRESS RELEASE body, not a summary of it — the
+quote_verified check is made against whatever text is passed in. Point DATABASE_URL at lode_test for
+the local demo; nothing else is touched.
 
     DATABASE_URL=postgresql://lode:lode@localhost:5433/lode_test \
       python scripts/add_one_to_lode.py story.json
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import pathlib
 import re
@@ -59,14 +63,98 @@ INSERT INTO royalties
   royalty_type, rate, rate_pct, holder, royalty_available,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_docid, source_label, source_url, source_date, source_quote, quote_verified,
-  status, ingested_from, is_primary)
+  status, ingested_from, origin, is_primary)
  VALUES (%(project_name)s,%(operator)s,%(commodity)s,%(jurisdiction)s,%(stage)s,
   %(royalty_type)s,%(rate)s,%(rate_pct)s,%(holder)s,'unknown',
   %(partial_coverage)s,%(advance_payments)s,%(production_threshold)s,%(production_cap)s,%(buyback)s,%(step_down)s,%(rofr)s,%(features_note)s,
   %(regime)s,%(source_docid)s,%(source_label)s,%(source_url)s,%(source_date)s,%(source_quote)s,%(quote_verified)s,
-  'pending','marketwatch',true)
+  'pending','marketwatch','marketwatch',true)
  ON CONFLICT (source_docid, project_name, holder, royalty_type) DO NOTHING
 """
+
+
+def _dedupe_module():
+    """Load scripts/dedupe.py as a module so we reuse its canonical dup-key SQL rather than
+    re-implementing it here (main() is __main__-guarded, so importing has no side effects).
+    One definition of "same real-world royalty" — if dedupe.py's key changes, this follows."""
+    path = pathlib.Path(__file__).resolve().parent / "dedupe.py"
+    spec = importlib.util.spec_from_file_location("dedupe", path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _link_into_memory_chain(cur, docid: str) -> dict:
+    """Give the just-inserted rows their dup_key / instrument_id / is_primary, using the SAME canonical
+    key as scripts/dedupe.py, scoped to the groups this PR touches.
+
+    Without this a bridged royalty arrives with a NULL instrument_id, and the dashboard's edit path
+    (saveFactEdit) demotes the old version with `WHERE instrument_id = <null>` — which matches nothing,
+    so the analyst's first correction leaves TWO is_primary rows for one royalty. Linking here also
+    collapses the PR into an existing technical-report instrument when LODE already has that royalty,
+    which is the cross-source corroboration the bridge exists to produce.
+
+    A full `python scripts/dedupe.py` run stays the authority (it also applies the semantic ledgers);
+    this is the same deterministic assignment, done for one PR at insert time.
+    """
+    dd = _dedupe_module()
+    # load_asset_aliases creates a temp table without IF NOT EXISTS, so guard it: this function may be
+    # called more than once inside one transaction (two releases linked together, or a test).
+    cur.execute("select to_regclass('asset_alias') is not null")
+    if not cur.fetchone()[0]:
+        dd.load_asset_aliases(cur)  # + the asset-rename ledger if present; no-op without one
+
+    cur.execute(f"update royalties set dup_key = {dd.DUPKEY_SQL} where source_docid = %s", (docid,))
+    cur.execute("select distinct dup_key from royalties where source_docid = %s and dup_key is not null",
+                (docid,))
+    keys = [r[0] for r in cur.fetchall()]
+    if not keys:
+        return {"instruments": 0, "joined_existing": 0, "flagged_revalidation": 0}
+
+    # How many of these groups already existed (i.e. this PR corroborates a royalty LODE already had)?
+    cur.execute("""select count(*) from (
+                     select dup_key from royalties
+                      where dup_key = any(%s) and source_docid <> %s
+                      group by dup_key) g""", (keys, docid))
+    joined = cur.fetchone()[0]
+
+    # instrument_id: REUSE the group's existing id where there is one, mint only for a new instrument.
+    # Mirrors dedupe.py. Restricted to rows that have none, so established rows are never rewritten.
+    cur.execute("""
+        with grp as (
+          select dup_key,
+                 coalesce(max(instrument_id) filter (where instrument_id is not null),
+                          'inst_'||substr(md5(dup_key||clock_timestamp()::text||random()::text),1,20)) as iid
+            from royalties where dup_key = any(%s) group by dup_key
+        )
+        update royalties r set instrument_id = grp.iid
+          from grp where r.dup_key = grp.dup_key and r.instrument_id is null
+    """, (keys,))
+
+    # is_primary within the affected groups only — same ranking dedupe.py uses.
+    cur.execute("""
+        with ranked as (
+          select id, row_number() over (
+                   partition by dup_key
+                   order by source_date desc nulls last, quote_verified desc,
+                            extract_confidence desc nulls last, id desc) as rn
+            from royalties where dup_key = any(%s)
+        )
+        update royalties r set is_primary = (ranked.rn = 1) from ranked where ranked.id = r.id
+    """, (keys,))
+
+    # A new source landing on an already-validated instrument must go back for re-review
+    # (migration 003's contract). Flag the surfaced row, as apply_audit_fixes.py does.
+    cur.execute("""
+        update royalties r set needs_revalidation = true
+         where r.dup_key = any(%s) and r.is_primary
+           and exists (select 1 from royalties v
+                        where v.dup_key = r.dup_key and v.status = 'validated')
+    """, (keys,))
+    flagged = cur.rowcount
+
+    return {"instruments": len(keys), "joined_existing": joined, "flagged_revalidation": flagged}
 
 
 def main() -> None:
@@ -123,16 +211,39 @@ def main() -> None:
             "quote_verified": bool(r.quote) and re.sub(r"\s+", " ", (r.quote or "")).strip().lower()[:80] in ntext,
         })
 
+    stored: list[dict] = []
+    skipped: list[dict] = []
+    chain = {"instruments": 0, "joined_existing": 0, "flagged_revalidation": 0}
     if rows:
         with db.connect() as conn:
             with conn.cursor() as cur:
-                cur.executemany(INSERT, rows)
+                # One row at a time so cur.rowcount tells us what was actually STORED. executemany
+                # reports only the batch, and ON CONFLICT DO NOTHING drops silently: the unique index is
+                # (source_docid, project_name, holder, royalty_type) and the RATE is not in it, so two
+                # genuinely different royalties from one release that share project+holder+type (a 2%
+                # and a 1% NSR both held by "the vendors") collide and the second is thrown away.
+                # Reporting len(rows) called that a success, and because the docid probe above then
+                # treats the release as done, the lost royalty could never be added again.
+                for r in rows:
+                    cur.execute(INSERT, r)
+                    (stored if cur.rowcount == 1 else skipped).append(r)
+                if stored and docid:
+                    chain = _link_into_memory_chain(cur, docid)
             conn.commit()
-    print(json.dumps({
-        "inserted": len(rows),
+
+    out = {
+        "inserted": len(stored),
+        "extracted": len(rows),
         "project": ex.project_name,
         "royalties": [{"type": r.royalty_type, "rate": r.rate, "holder": r.holder} for r in ex.royalties],
-    }))
+        **chain,
+    }
+    if skipped:
+        out["skipped"] = len(skipped)
+        out["skipped_detail"] = [
+            {"type": r["royalty_type"], "rate": r["rate"], "holder": r["holder"]} for r in skipped
+        ]
+    print(json.dumps(out))
 
 
 if __name__ == "__main__":

@@ -135,3 +135,150 @@ def test_no_royalty_passage_inserts_nothing():
             cur.execute("DELETE FROM royalties WHERE source_docid = %s", (docid,))
         conn.commit()
         conn.close()
+
+
+# ---------------------------------------------------------------- memory chain (skip if no DB)
+# These guard the contract that makes a bridged royalty a first-class instrument rather than an
+# orphan row. They run entirely inside a transaction that is rolled back, so they never leave data
+# behind, and they make no Claude call.
+
+EDIT_INSERT = """
+INSERT INTO royalties (project_name, operator, commodity, jurisdiction, stage, regime,
+  source_label, source_url, source_date, source_quote, quote_verified, ingested_from, dup_key,
+  instrument_id, royalty_type, rate, rate_pct, holder,
+  source_docid, origin, status, is_primary, needs_revalidation, created_at, updated_at)
+SELECT project_name, operator, commodity, jurisdiction, stage, regime,
+  source_label, source_url, source_date, source_quote, quote_verified, ingested_from, dup_key,
+  instrument_id, royalty_type, rate, rate_pct, %s,
+  coalesce(source_docid,'manual') || '#edit-' || extract(epoch from now())::bigint,
+  'claude_human_edited', 'pending', true, true, now(), now()
+FROM royalties WHERE id = %s RETURNING id, instrument_id"""
+
+
+@pytest.fixture
+def tx():
+    """A cursor whose transaction is always rolled back — these tests must not mutate the DB."""
+    conn = _connect()
+    try:
+        yield conn.cursor()
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def _roy(**kw) -> dict:
+    """Parameters for add_one_to_lode's INSERT, with only the fields a test cares about set."""
+    base = dict(project_name=None, operator=None, commodity=[], jurisdiction=None, stage=None,
+                royalty_type=None, rate=None, rate_pct=None, holder=None, partial_coverage=None,
+                advance_payments=None, production_threshold=None, production_cap=None, buyback=None,
+                step_down=None, rofr=None, features_note=None, regime="MarketWatch", source_docid=None,
+                source_label="MarketWatch · test", source_url=None, source_date=None,
+                source_quote="test quote", quote_verified=False)
+    base.update(kw)
+    return base
+
+
+def test_inserted_row_is_linked_into_the_memory_chain(tx):
+    """A bridged row must come out with dup_key, instrument_id and origin set. A NULL instrument_id
+    is what breaks the dashboard's edit path (see the test below), so this is load-bearing."""
+    docid = f"pytest-{uuid.uuid4().hex[:8]}"
+    tx.execute(add_one.INSERT, _roy(project_name="Chain Test Project", holder="Someone Ltd.",
+                                    royalty_type="NSR", rate="2%", rate_pct=2, source_docid=docid))
+    add_one._link_into_memory_chain(tx, docid)
+    tx.execute("select instrument_id, dup_key, origin, is_primary from royalties where source_docid=%s",
+               (docid,))
+    instrument_id, dup_key, origin, is_primary = tx.fetchone()
+    assert instrument_id and instrument_id.startswith("inst_")
+    assert dup_key == "chaintestproject|NSR|2|someone"
+    assert origin == "marketwatch"   # migration 003's convention for ingested_from='marketwatch'
+    assert is_primary is True
+
+
+def test_bridged_row_joins_an_existing_instrument(tx):
+    """The point of the bridge: when LODE already holds this royalty from a technical report, the
+    press release must corroborate that instrument rather than mint a second one."""
+    report_doc, pr_doc = f"rpt-{uuid.uuid4().hex[:8]}", f"mw-{uuid.uuid4().hex[:8]}"
+    shared = dict(project_name="Joined Project", holder="Alaska Hardrock, Inc.",
+                  royalty_type="NSR", rate="2%", rate_pct=2)
+    tx.execute(add_one.INSERT, _roy(source_docid=report_doc, **shared))
+    add_one._link_into_memory_chain(tx, report_doc)
+    tx.execute("select instrument_id from royalties where source_docid=%s", (report_doc,))
+    existing = tx.fetchone()[0]
+
+    tx.execute(add_one.INSERT, _roy(source_docid=pr_doc, **shared))
+    chain = add_one._link_into_memory_chain(tx, pr_doc)
+    tx.execute("select instrument_id from royalties where source_docid=%s", (pr_doc,))
+    assert tx.fetchone()[0] == existing          # same real-world royalty -> one instrument
+    assert chain["joined_existing"] == 1
+
+
+def test_first_edit_leaves_exactly_one_primary(tx):
+    """Replays the dashboard's saveFactEdit. Its demote runs `WHERE instrument_id = <id>`, so with a
+    linked row the prior version is retired and exactly one version stays current."""
+    docid = f"pytest-{uuid.uuid4().hex[:8]}"
+    tx.execute(add_one.INSERT, _roy(project_name="Edit Test Project", holder="Holder Ltd.",
+                                    royalty_type="NSR", rate="2%", rate_pct=2, source_docid=docid))
+    add_one._link_into_memory_chain(tx, docid)
+    tx.execute("select id, dup_key from royalties where source_docid=%s", (docid,))
+    rid, dup_key = tx.fetchone()
+
+    tx.execute(EDIT_INSERT, ("Holder Ltd. (corrected)", rid))
+    new_id, new_iid = tx.fetchone()
+    tx.execute("UPDATE royalties SET is_primary = (id = %s) WHERE instrument_id = %s", (new_id, new_iid))
+    tx.execute("select count(*) from royalties where dup_key=%s and is_primary", (dup_key,))
+    assert tx.fetchone()[0] == 1
+
+
+def test_edit_duplicates_when_instrument_id_is_missing(tx):
+    """The regression this all exists to prevent: with a NULL instrument_id the demote matches nothing,
+    so the analyst's first correction leaves TWO current versions of one royalty. Documents exactly
+    why _link_into_memory_chain must run on every insert."""
+    docid = f"pytest-{uuid.uuid4().hex[:8]}"
+    tx.execute(add_one.INSERT, _roy(project_name="Orphan Test Project", holder="Holder Ltd.",
+                                    royalty_type="NSR", rate="2%", rate_pct=2, source_docid=docid))
+    add_one._link_into_memory_chain(tx, docid)
+    tx.execute("select id, dup_key from royalties where source_docid=%s", (docid,))
+    rid, dup_key = tx.fetchone()
+    tx.execute("update royalties set instrument_id = null where id=%s", (rid,))  # simulate the old insert
+
+    tx.execute(EDIT_INSERT, ("Holder Ltd. (corrected)", rid))
+    new_id, new_iid = tx.fetchone()
+    tx.execute("UPDATE royalties SET is_primary = (id = %s) WHERE instrument_id = %s", (new_id, new_iid))
+    tx.execute("select count(*) from royalties where dup_key=%s and is_primary", (dup_key,))
+    assert tx.fetchone()[0] == 2   # the bug, pinned so a regression is loud
+
+
+def test_colliding_royalty_is_reported_as_skipped(tx):
+    """Two royalties from one release that differ only in rate collide on the unique index
+    (source_docid, project_name, holder, royalty_type) — rate is not part of it. The insert must be
+    counted by rowcount, not by how many rows were attempted, or a lost royalty reads as success."""
+    docid = f"pytest-{uuid.uuid4().hex[:8]}"
+    stored = skipped = 0
+    for rate, pct in (("2%", 2), ("1%", 1)):
+        tx.execute(add_one.INSERT, _roy(project_name="Collide Project", holder="Newmont Corporation",
+                                        royalty_type="NSR", rate=rate, rate_pct=pct, source_docid=docid))
+        if tx.rowcount == 1:
+            stored += 1
+        else:
+            skipped += 1
+    assert (stored, skipped) == (1, 1)
+    tx.execute("select count(*) from royalties where source_docid=%s", (docid,))
+    assert tx.fetchone()[0] == 1   # only one landed; the caller must say so
+
+
+def test_landing_on_a_validated_instrument_requests_revalidation(tx):
+    """Migration 003's contract: a new source arriving on an already-validated instrument goes back
+    for re-review rather than quietly changing what the desk already signed off."""
+    report_doc, pr_doc = f"rpt-{uuid.uuid4().hex[:8]}", f"mw-{uuid.uuid4().hex[:8]}"
+    shared = dict(project_name="Validated Project", holder="Holder Ltd.",
+                  royalty_type="NSR", rate="2%", rate_pct=2)
+    tx.execute(add_one.INSERT, _roy(source_docid=report_doc, **shared))
+    add_one._link_into_memory_chain(tx, report_doc)
+    tx.execute("update royalties set status='validated' where source_docid=%s", (report_doc,))
+
+    tx.execute(add_one.INSERT, _roy(source_docid=pr_doc, **shared))
+    chain = add_one._link_into_memory_chain(tx, pr_doc)
+    assert chain["flagged_revalidation"] >= 1
+    tx.execute("select count(*) from royalties where source_docid in (%s,%s) and needs_revalidation",
+               (report_doc, pr_doc))
+    assert tx.fetchone()[0] >= 1
