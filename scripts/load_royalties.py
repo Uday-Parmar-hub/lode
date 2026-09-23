@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from techreport import chain, config, db  # noqa: E402
+from techreport.commodity import commodities  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--source", choices=["pilot", "edgar", "marketwatch"], default="pilot",
@@ -34,29 +35,6 @@ LEDGERS = {
 }
 LEDGER_PATH, INGESTED_FROM = LEDGERS[args.source]
 MANIFEST = config.CORPUS_DIR / "_archive_manifest.json"
-
-NAME2SYM = {"gold": "Au", "silver": "Ag", "copper": "Cu", "molybdenum": "Mo", "moly": "Mo",
-            "nickel": "Ni", "zinc": "Zn", "lead": "Pb", "cobalt": "Co", "uranium": "U",
-            "platinum": "PGE", "palladium": "PGE", "pge": "PGE", "pgm": "PGE", "iron": "Fe",
-            "vanadium": "V", "lithium": "Li", "tin": "Sn", "tungsten": "W", "graphite": "C"}
-
-
-def commodities(s: str | None) -> list[str]:
-    out: list[str] = []
-    for tok in re.split(r"[,/&]|\band\b", (s or "")):
-        t = tok.strip()
-        if not t:
-            continue
-        sym = NAME2SYM.get(t.lower())
-        if sym:
-            out.append(sym)
-        elif 1 <= len(t) <= 4 and t[0].isupper():   # already a symbol like Au / PGE
-            out.append(t)
-    seen: list[str] = []
-    for x in out:
-        if x not in seen:
-            seen.append(x)
-    return seen
 
 
 def rate_pct(s: str | None) -> float | None:

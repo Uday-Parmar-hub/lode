@@ -21,29 +21,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from techreport import chain, db, royalty  # noqa: E402
-
-NAME2SYM = {"gold": "Au", "silver": "Ag", "copper": "Cu", "molybdenum": "Mo", "moly": "Mo",
-            "nickel": "Ni", "zinc": "Zn", "lead": "Pb", "cobalt": "Co", "uranium": "U",
-            "platinum": "PGE", "palladium": "PGE", "pge": "PGE", "pgm": "PGE", "iron": "Fe",
-            "vanadium": "V", "lithium": "Li", "tin": "Sn", "tungsten": "W", "graphite": "C"}
-
-
-def commodities(s: str | None) -> list[str]:
-    out: list[str] = []
-    for tok in re.split(r"[,/&]|\band\b", (s or "")):
-        t = tok.strip()
-        if not t:
-            continue
-        sym = NAME2SYM.get(t.lower())
-        if sym:
-            out.append(sym)
-        elif 1 <= len(t) <= 4 and t[0].isupper():
-            out.append(t)
-    seen: list[str] = []
-    for x in out:
-        if x not in seen:
-            seen.append(x)
-    return seen
+from techreport.commodity import commodities  # noqa: E402
 
 
 def rate_pct(s: str | None) -> float | None:
@@ -58,12 +36,12 @@ def rate_pct(s: str | None) -> float | None:
 
 INSERT = """
 INSERT INTO royalties
- (project_name, operator, commodity, jurisdiction, stage,
+ (project_name, operator, commodity, jurisdiction, stage, is_producing,
   royalty_type, rate, rate_pct, holder, royalty_available,
   partial_coverage, advance_payments, production_threshold, production_cap, buyback, step_down, rofr, features_note,
   regime, source_docid, source_label, source_url, source_date, source_quote, quote_verified,
   status, ingested_from, origin, is_primary)
- VALUES (%(project_name)s,%(operator)s,%(commodity)s,%(jurisdiction)s,%(stage)s,
+ VALUES (%(project_name)s,%(operator)s,%(commodity)s,%(jurisdiction)s,%(stage)s,%(is_producing)s,
   %(royalty_type)s,%(rate)s,%(rate_pct)s,%(holder)s,'unknown',
   %(partial_coverage)s,%(advance_payments)s,%(production_threshold)s,%(production_cap)s,%(buyback)s,%(step_down)s,%(rofr)s,%(features_note)s,
   %(regime)s,%(source_docid)s,%(source_label)s,%(source_url)s,%(source_date)s,%(source_quote)s,%(quote_verified)s,
@@ -99,6 +77,22 @@ def collapse_repeats(rows: list[dict]) -> tuple[list[dict], int]:
         seen.add(key)
         kept.append(r)
     return kept, len(rows) - len(kept)
+
+
+def _with_extractor_note(other_terms: str | None, notes: str | None) -> str | None:
+    """Keep the extractor's own caveats on the row that lands in the review queue.
+
+    `notes` is the field whose whole purpose is "anything ambiguous a human should check" — e.g. that
+    a royalty is held by the ISSUER rather than a third party, or that a government royalty was seen
+    and excluded. It is extraction-level, so it is appended to each royalty from that release rather
+    than dropped; the batch path keeps it in its reviewable ledger, this path had nowhere else to put
+    it and threw it away.
+    """
+    if not notes:
+        return other_terms
+    flat = re.sub(r"\s+", " ", notes).strip()[:400]
+    note = f"[extractor note] {flat}"
+    return f"{other_terms}\n\n{note}" if other_terms else note
 
 
 def main() -> None:
@@ -137,6 +131,7 @@ def main() -> None:
             "commodity": commodities(ex.commodity),
             "jurisdiction": ex.jurisdiction,
             "stage": ex.stage,
+            "is_producing": ex.is_producing,
             "royalty_type": r.royalty_type,
             "rate": r.rate,
             "rate_pct": rate_pct(r.rate),
@@ -148,7 +143,7 @@ def main() -> None:
             "buyback": r.buyback,
             "step_down": r.step_down,
             "rofr": r.rofr,
-            "features_note": getattr(r, "other_terms", None),
+            "features_note": _with_extractor_note(getattr(r, "other_terms", None), ex.notes),
             "regime": "MarketWatch",
             "source_docid": rec.get("docid"),
             # Records WHO staged this release, not just when — the bridge is a human-gated action and

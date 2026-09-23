@@ -170,6 +170,7 @@ def tx():
 def _roy(**kw) -> dict:
     """Parameters for add_one_to_lode's INSERT, with only the fields a test cares about set."""
     base = dict(project_name=None, operator=None, commodity=[], jurisdiction=None, stage=None,
+                is_producing=None,
                 royalty_type=None, rate=None, rate_pct=None, holder=None, partial_coverage=None,
                 advance_payments=None, production_threshold=None, production_cap=None, buyback=None,
                 step_down=None, rofr=None, features_note=None, regime="MarketWatch", source_docid=None,
@@ -320,3 +321,63 @@ def test_collapse_repeats_keeps_same_rate_with_different_terms():
             _r("Foo", "Vendors", "NSR", "2%", production_cap=None)]
     kept, dropped = add_one.collapse_repeats(rows)
     assert (len(kept), dropped) == (2, 0)
+
+
+# ---------------------------------------------------------------- primary selection across sources
+def _two_source_instrument(tx, report_status: str):
+    """A validated-or-not technical report and a bridged press release sharing one instrument."""
+    tag = uuid.uuid4().hex[:8]
+    proj = f"Lineage {tag}"
+    ins = ("insert into royalties (project_name, holder, royalty_type, rate, rate_pct, regime,"
+           " source_docid, source_date, status, ingested_from, commodity, quote_verified, is_primary)"
+           " values (%s,'Holder Ltd.','NSR','2%%',2,%s,%s,%s,%s,%s,'{}',true,true) returning id")
+    tx.execute(ins, (proj, "NI 43-101", f"rpt-{tag}", "2024-01-01", report_status, "edgar"))
+    report = tx.fetchone()[0]
+    tx.execute(ins, (proj, "MarketWatch", f"mw-{tag}", "2026-09-23", "pending", "marketwatch"))
+    pr = tx.fetchone()[0]
+    chain.link(tx, "source_docid = any(%s)", ([f"rpt-{tag}", f"mw-{tag}"],))
+    return proj, report, pr
+
+
+def _edit(tx, row_id: int) -> int:
+    tx.execute(EDIT_INSERT, ("Holder Ltd. (corrected)", row_id))
+    return tx.fetchone()[0]
+
+
+def test_editing_a_press_release_does_not_retire_a_validated_report(tx):
+    """The bridge deliberately puts a press release on the same instrument as the report it
+    corroborates. An edit to the unreviewed press-release row must not unseat the desk-validated
+    row from the other source — which is exactly what an instrument-wide demote did."""
+    proj, report, pr = _two_source_instrument(tx, "validated")
+    _edit(tx, pr)
+    chain.set_primary(tx, "project_name = %s", (proj,))
+    tx.execute("select is_primary from royalties where id = %s", (report,))
+    assert tx.fetchone()[0] is True
+    tx.execute("select count(*) from royalties where project_name = %s and is_primary", (proj,))
+    assert tx.fetchone()[0] == 1
+
+
+def test_editing_a_validated_report_surfaces_the_correction(tx):
+    """The other direction, and the one a naive validated-first rank breaks: an edit is written
+    status='pending', so standing has to be a property of the LINEAGE or the analyst's correction
+    loses to the very row it corrected."""
+    proj, report, pr = _two_source_instrument(tx, "validated")
+    new_id = _edit(tx, report)
+    chain.set_primary(tx, "project_name = %s", (proj,))
+    tx.execute("select is_primary from royalties where id = %s", (new_id,))
+    assert tx.fetchone()[0] is True
+    tx.execute("select is_primary from royalties where id in (%s,%s)", (report, pr))
+    assert [r[0] for r in tx.fetchall()] == [False, False]
+
+
+def test_exactly_one_primary_per_group_after_selection(tx):
+    """The invariant, whatever the inputs: never zero primaries, never two."""
+    proj, report, pr = _two_source_instrument(tx, "pending")
+    _edit(tx, pr)
+    _edit(tx, report)
+    chain.set_primary(tx, "project_name = %s", (proj,))
+    tx.execute("""select count(*) from (
+                    select dup_key, count(*) filter (where is_primary) n from royalties
+                     where project_name = %s group by dup_key) g
+                   where n <> 1""", (proj,))
+    assert tx.fetchone()[0] == 0

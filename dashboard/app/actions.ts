@@ -100,10 +100,52 @@ export async function saveFactEdit(id: string, e: FactEdit): Promise<{ ok: boole
     );
     if (!ins.rows.length) return { ok: false };
     const { id: newId, instrument_id: iid } = ins.rows[0] as { id: string; instrument_id: string };
-    // make the new version the sole primary of its chain; the prior version(s) become history
+    // Choose the surfaced row exactly as techreport/chain.py set_primary() does: among the NEWEST
+    // VERSION OF EACH SOURCE LINEAGE, validated first. Keep the two in step.
+    //
+    // This used to be `is_primary = (id = $newId) WHERE instrument_id = $iid`, which forced the edited
+    // row primary across the whole instrument. That was harmless while bridged rows carried no
+    // instrument_id — but now that a press release shares an instrument with the technical report it
+    // corroborates, it would retire a desk-validated row from a different source on the strength of an
+    // edit to an unreviewed one. The lineage rule keeps a correction superseding the row it corrects
+    // (an edit is written status='pending', so a plain validated-first rank would lose to its own
+    // parent) while protecting another source's validated row.
+    const scope = iid
+      ? "instrument_id = $1"
+      : "dup_key = (select dup_key from royalties where id = $1::bigint)"; // legacy rows with no instrument
     await c.query(
-      `UPDATE royalties SET is_primary = (id = $1::bigint) WHERE instrument_id = $2`,
-      [newId, iid],
+      `WITH lineage AS (
+         SELECT id, split_part(coalesce(source_docid, id::text), '#edit-', 1) AS lin,
+                row_number() OVER (
+                  PARTITION BY split_part(coalesce(source_docid, id::text), '#edit-', 1)
+                  ORDER BY id DESC) AS ln
+           FROM royalties WHERE ${scope}
+       ),
+       standing AS (
+         -- Standing belongs to the LINEAGE, not the row: an edit is written status='pending', so
+         -- ranking on the row's own status would demote a correction to a validated row out of the
+         -- running and hand the instrument to whatever unreviewed row is newest.
+         SELECT l.lin, bool_or(r.status = 'validated') AS lineage_validated
+           FROM royalties r JOIN lineage l ON l.id = r.id
+          GROUP BY l.lin
+       ),
+       ranked AS (
+         SELECT l.id, row_number() OVER (
+                  ORDER BY s.lineage_validated DESC, r.source_date DESC NULLS LAST,
+                           r.quote_verified DESC, r.extract_confidence DESC NULLS LAST, r.id DESC) AS rn
+           FROM lineage l
+           JOIN royalties r ON r.id = l.id
+           JOIN standing s ON s.lin IS NOT DISTINCT FROM l.lin
+          WHERE l.ln = 1
+       ),
+       final AS (
+         SELECT l.id, coalesce(rk.rn = 1, false) AS want
+           FROM lineage l LEFT JOIN ranked rk ON rk.id = l.id
+       )
+       UPDATE royalties r SET is_primary = f.want
+         FROM final f
+        WHERE f.id = r.id AND r.is_primary IS DISTINCT FROM f.want`,
+      [iid ?? newId],
     );
     return { ok: true, newId: String(newId) };
   });

@@ -29,7 +29,7 @@ from techreport import config, db  # noqa: E402
 # The dup-key definition, the primary ordering and the asset-alias staging now live in
 # techreport.chain, so the button and the batch loader use the same ones rather than copies.
 from techreport.chain import (  # noqa: E402
-    ASSET_LEDGER, DUPKEY_SQL, PRIMARY_ORDER_SQL, load_asset_aliases,
+    ASSET_LEDGER, DUPKEY_SQL, load_asset_aliases, set_primary,
 )
 
 # Semantic ledgers (LLM-proposed, human-reviewable). Both optional — without them dedupe.py is the
@@ -84,18 +84,7 @@ def main() -> None:
             cur.execute("create index if not exists idx_roy_dupkey on royalties (dup_key)")
             merges = apply_ledger(cur)  # semantic pass 2 (no-op if the ledger is absent)
             # surface the newest / most-trustworthy row per dup_key; retain the rest (is_primary=false)
-            cur.execute(
-                f"""
-                with ranked as (
-                  select id, row_number() over (
-                    partition by dup_key order by {PRIMARY_ORDER_SQL}
-                  ) as rn
-                  from royalties
-                )
-                update royalties r set is_primary = (ranked.rn = 1)
-                from ranked where ranked.id = r.id
-                """
-            )
+            set_primary(cur, "dup_key is not null", ())
             # keep instrument_id consistent with the dup_key groups: one stable id per group, REUSING an
             # existing id in the group where present (so confirmed merges / prior ids survive a re-run),
             # minting a fresh one only for groups that have none. Makes instrument_id a durable output.
