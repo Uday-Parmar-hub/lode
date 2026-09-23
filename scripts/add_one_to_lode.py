@@ -127,7 +127,12 @@ def main() -> None:
     for r in ex.royalties:
         rows.append({
             "project_name": ex.project_name or rec.get("company") or "?",
-            "operator": rec.get("company"),
+            # The operator the extractor READ FROM THE TEXT, not the release's issuer. Stamping the
+            # issuer here was affirmatively wrong in the case this tool most cares about: on an
+            # Orogen Royalties release the row claimed Orogen operated First Majestic's Ermitaño
+            # mine, while the extraction itself had correctly identified both parties. NULL when the
+            # text does not say — better unknown than wrong, and operator is not part of dup_key.
+            "operator": ex.operator,
             "commodity": commodities(ex.commodity),
             "jurisdiction": ex.jurisdiction,
             "stage": ex.stage,
