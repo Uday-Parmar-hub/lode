@@ -28,8 +28,11 @@ NAME2SYM: dict[str, str] = {
     "lithium": "Li", "spodumene": "Li", "cobalt": "Co", "graphite": "C",
     "uranium": "U", "coal": "Coal", "metallurgical coal": "Coal", "thermal coal": "Coal",
     "anthracite": "Coal", "lignite": "Coal",
-    "platinum": "Pt", "palladium": "Pd", "rhodium": "Rh", "ruthenium": "Ru",
-    "iridium": "Ir", "osmium": "Os",
+    # The board's commodity filter has a fixed PGE chip (board.tsx METALS), so the platinum-group
+    # metals map to PGE rather than to their own symbols — precision here would cost filterability,
+    # pushing those rows into the catch-all "Other".
+    "platinum": "PGE", "palladium": "PGE", "rhodium": "PGE", "ruthenium": "PGE",
+    "iridium": "PGE", "osmium": "PGE",
     "platinum group": "PGE", "platinum group metals": "PGE", "platinum group elements": "PGE",
     "pge": "PGE", "pgm": "PGE", "pgms": "PGE",
     "rare earth": "REE", "rare earths": "REE", "rare earth elements": "REE", "ree": "REE",
