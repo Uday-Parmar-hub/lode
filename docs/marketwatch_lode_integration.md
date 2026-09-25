@@ -1,5 +1,12 @@
 # MarketWatch to LODE: integration findings (Phase 1 dry-run)
 
+> **HISTORICAL — superseded by [`marketwatch_bridge.md`](marketwatch_bridge.md).**
+> This is the read-only investigation that justified building the bridge. It predates the
+> implementation and describes an earlier design; several details here are no longer true (the
+> extraction is no longer fed `angle`, releases are identified by document rather than story, and
+> the Cloud Shell export below is missing the columns the batch path needs). Kept for the reasoning
+> and the numbers that made the case. For how the feature actually works, read the other file.
+
 Prepared by Uday, 2026-09-14. Audience: Elijah (interim), Matt (on return). Status: proof-of-value done,
 read-only. No production data was changed.
 
