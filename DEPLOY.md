@@ -48,12 +48,25 @@ dump into the v16 server, strip any v17-only `transaction_timeout` line first �
 - Extraction/dedup are **manual + reviewable-ledger** (see `CLAUDE.md`) — never push a data change the
   human hasn't validated.
 
-## Migrating to the org (OR-Royalties-Inc) — ready to run when IT provisions the repo
+## Migrating to the org (OR-Royalties-Inc) — ✅ DONE 2026-09-30
 
-LODE currently lives on a personal remote (`origin` → `github.com/Uday-Parmar-hub/lode`, private). The
-end-state mirrors MarketWatch: a repo under **`OR-Royalties-Inc`**. **Blocked on IT (Nelson)** to create
-the empty org repo + grant push access (confirm the repo name with him). It is a clean mirror-push
-otherwise — no data or secrets have ever been committed.
+**`origin` is now `github.com/OR-Royalties-Inc/LODE`** (private), matching MarketWatch. The personal
+remote is kept as `personal` → `github.com/Uday-Parmar-hub/lode`. All four branches were pushed:
+`main`, `feat/marketwatch-lode-bridge`, `feat/memory-chain`, `experiment/web-mockup`.
+
+The bridge work was deliberately left on its branch rather than merged to `main`: `main` is the
+deployable line, and merging would imply a sign-off Elijah has not given. See
+`docs/marketwatch_bridge.md`.
+
+IT provisioned the repo with a placeholder README on an unrelated history, so `main` was force-pushed
+over that single initial commit (nothing of value in it, and its README collided with the real one).
+
+The pre-push audit below was re-run immediately before the push and was clean: 0 tracked confidential
+files, no keys or gate password anywhere in history, 2.6M repo. Keep it here — it is worth re-running
+before any future mirror to a new remote.
+
+**Still open:** archive or delete the personal `Uday-Parmar-hub/lode` repo once the org copy is
+confirmed, so OR's tooling lives only under the org. Nothing confidential is in it, but it is OR IP.
 
 **1. Pre-push audit — re-run to confirm still clean (expect 0 / NONE):**
 ```bash
@@ -72,7 +85,7 @@ git branch -d master feat/royalty-db                         # stale / already-m
 # experiment/web-mockup has 2 unique commits — keep or drop, your call
 ```
 
-**3. Mirror-push to the org (once the empty org repo exists):**
+**3. Mirror-push to the org (what was run):**
 ```bash
 git remote add org https://github.com/OR-Royalties-Inc/lode.git   # exact name per Nelson
 git push org main --tags
