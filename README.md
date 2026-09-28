@@ -95,6 +95,52 @@ flowchart LR
 
 ---
 
+## 🧭 The 26 scripts, and which ones matter
+
+`scripts/` has grown a mix of pipeline stages, one-off repairs and dead investigations. This is which
+is which, so you don't have to open them to find out.
+
+**The pipeline, in order** — this is the path a technical report takes to the screen:
+
+| script | what it does |
+|---|---|
+| `build_inventory.py` | list the technical reports per resolved operator, all regimes |
+| `archive_corpus.py` | download each document + its extracted text to the local corpus |
+| `royalty_pilot.py` | Claude extraction over the corpus → `data/royalty_pilot.json` |
+| `ingest_edgar.py` | the same for the SEC EDGAR S-K 1300 corpus → `data/edgar_royalties.json` |
+| `load_royalties.py` | a reviewed ledger → the `royalties` table (`--source pilot\|edgar\|marketwatch`) |
+| `resolve_holders.py` | propose holder merges → `data/holder_merges.json` (review, then apply) |
+| `resolve_assets.py` | propose asset renames → `data/asset_aliases.json` (review, then apply) |
+| `dedupe.py` | **the authority on identity** — `dup_key`, `instrument_id`, `is_primary`; re-runnable |
+| `enrich_jurisdiction.py` · `flag_competitors.py` · `backfill_producing.py` | enrichment, each ledger-then-apply |
+
+**Live feature**
+
+| script | what it does |
+|---|---|
+| `add_one_to_lode.py` | one press release → staged royalty. Backs the MarketWatch "Add to LODE" button. See `docs/marketwatch_bridge.md` |
+| `ingest_marketwatch.py` | the batch equivalent → `data/marketwatch_royalties.json` |
+
+**Quality and audit**
+
+| script | what it does |
+|---|---|
+| `eval_extraction.py` | graded extraction quality against labelled fixtures — the LLM quality gate |
+| `audit_dupes_fable.py` | second-model duplicate audit (Matt's "different agent" cross-check) → candidates, not a score |
+| `apply_audit_fixes.py` | apply human-confirmed audit merges, dry-run by default |
+
+**Maintenance and one-offs** — safe to ignore unless you need them
+
+| script | what it does |
+|---|---|
+| `init_db.py` | (re)create the schema. **Drops the table** — dev only |
+| `backfill_commodities.py` | re-derive commodity arrays the old parser got wrong; dry-run by default |
+| `apply_overrides.py` | apply manual identifier overrides to the resolution manifest |
+| `recover_operators.py` · `resolve_operators.py` | operator → RIC → PermID resolution (LSEG-era; the entitlement is gone) |
+| `split_greenstone.py` | one-off: un-bundle two royalties the extraction fused into one row |
+| `universe_count.py` · `probe_kscope_depth.py` | source-depth probes — how far back each source actually goes |
+| `dryrun_marketwatch_lode.py` · `dryrun_reextract_match.py` | the read-only Phase-1 bridge investigation. Historical |
+
 ## 🗄 Architecture
 
 One core table, versioned and enriched. The dashboard only ever reads.

@@ -185,11 +185,16 @@ Orogen as operating First Majestic's mine.
 previous version with `WHERE instrument_id = <null>`, which matches nothing, so the analyst's first
 correction leaves **two current versions** of one royalty.
 
-**The surfaced row is chosen per source lineage.** A lineage is one source document plus the edits
-appended to it. Standing (whether it was ever validated) belongs to the *lineage*, not the row,
-because an edit is written `status='pending'` — rank on the row's own status and correcting a
-validated row demotes it out of the running and hands the instrument to whatever unreviewed row is
-newest. Both directions are pinned by tests.
+**The surfaced row is the NEWEST version, signed off or not.** That is a locked product decision —
+*"newest shown, validated trusted"* (`docs/specs/memory_chain.md`) — and `needs_revalidation` is what
+tells the analyst not to trust it blindly. Ranking validated rows first was implemented and then
+reverted: it hides the fact that a newer source changed something, which is the whole reason the
+version chain exists.
+
+What the selection *is* scoped by is the **source lineage** — one source document plus the edits
+appended to it — so a correction supersedes the row it corrects and stops there. Before that, the
+dashboard's demote ran across the whole instrument, so an edit to a press-release row retired a
+validated technical-report row from a different source. Pinned by tests.
 
 **Identify releases by `documents.id`, not `stories.id`.** Story ids are per‑prompt‑version; a
 prompt fork mints new rows for the same release. The repo's own `reflag_to_version.sql` documents

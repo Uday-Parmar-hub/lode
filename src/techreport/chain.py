@@ -90,10 +90,9 @@ def load_asset_aliases(cur) -> int:
 # always has the newest source_date, so without this term one click could replace a validated
 # technical-report row in every default view. The new source still raises needs_revalidation, which is
 # how it gets looked at. (No rows are 'validated' yet, so this term is currently a no-op.)
-# Tie-break WITHIN one standing class. The standing itself (whether the lineage was ever validated)
-# is a separate leading term supplied by _SET_PRIMARY_SQL — see the note there for why it has to be a
-# property of the lineage rather than of the row. Columns are qualified `r.` because this is used
-# inside a join where `id` would be ambiguous; any query using it must alias royalties as `r`.
+# How versions of one instrument are ordered for display: newest source first. Columns are qualified
+# `r.` because this is used inside a join where `id` would be ambiguous; any query using it must
+# alias royalties as `r`.
 PRIMARY_ORDER_SQL = """
     r.source_date desc nulls last,
     r.quote_verified desc,
@@ -121,24 +120,16 @@ with lineage as (
          row_number() over (partition by dup_key, {lineage} order by id desc) as ln
     from royalties where {scope}
 ),
-standing as (
-  -- Standing belongs to the LINEAGE, not the row. A human edit is written status='pending', so
-  -- ranking on the row's own status would mean correcting a validated row demotes it out of the
-  -- running and hands the instrument to whatever unreviewed row happens to be newest. Treating the
-  -- lineage as validated if ANY of its versions is means a correction inherits the standing of what
-  -- it corrected: it still surfaces, and it still cannot be displaced by another source's
-  -- unreviewed row.
-  select l.dup_key, l.lin, bool_or(r.status = 'validated') as lineage_validated
-    from royalties r join lineage l on l.id = r.id
-   group by l.dup_key, l.lin
-),
 ranked as (
+  -- NEWEST SHOWN, VALIDATED TRUSTED (docs/specs/memory_chain.md, locked decision). The surfaced row
+  -- is the newest version, whether or not it has been signed off; needs_revalidation badges it so an
+  -- analyst sees fresh data without trusting it blindly. Deliberately NOT validated-first: ranking a
+  -- validated row above a newer one hides the fact that a new source changed something, which is the
+  -- whole reason the chain exists.
   select l.id,
-         row_number() over (partition by l.dup_key
-                            order by s.lineage_validated desc, {order}) as rn
+         row_number() over (partition by l.dup_key order by {order}) as rn
     from lineage l
     join royalties r on r.id = l.id
-    join standing s on s.dup_key is not distinct from l.dup_key and s.lin is not distinct from l.lin
    where l.ln = 1
 ),
 final as (

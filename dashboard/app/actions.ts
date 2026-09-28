@@ -121,21 +121,15 @@ export async function saveFactEdit(id: string, e: FactEdit): Promise<{ ok: boole
                   ORDER BY id DESC) AS ln
            FROM royalties WHERE ${scope}
        ),
-       standing AS (
-         -- Standing belongs to the LINEAGE, not the row: an edit is written status='pending', so
-         -- ranking on the row's own status would demote a correction to a validated row out of the
-         -- running and hand the instrument to whatever unreviewed row is newest.
-         SELECT l.lin, bool_or(r.status = 'validated') AS lineage_validated
-           FROM royalties r JOIN lineage l ON l.id = r.id
-          GROUP BY l.lin
-       ),
        ranked AS (
+         -- NEWEST SHOWN, VALIDATED TRUSTED (docs/specs/memory_chain.md, locked decision): the
+         -- surfaced row is the newest version regardless of sign-off, and needs_revalidation badges
+         -- it. Keep in step with techreport.chain._SET_PRIMARY_SQL.
          SELECT l.id, row_number() OVER (
-                  ORDER BY s.lineage_validated DESC, r.source_date DESC NULLS LAST,
-                           r.quote_verified DESC, r.extract_confidence DESC NULLS LAST, r.id DESC) AS rn
+                  ORDER BY r.source_date DESC NULLS LAST, r.quote_verified DESC,
+                           r.extract_confidence DESC NULLS LAST, r.id DESC) AS rn
            FROM lineage l
            JOIN royalties r ON r.id = l.id
-           JOIN standing s ON s.lin IS NOT DISTINCT FROM l.lin
           WHERE l.ln = 1
        ),
        final AS (

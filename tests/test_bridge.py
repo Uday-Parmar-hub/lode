@@ -344,30 +344,33 @@ def _edit(tx, row_id: int) -> int:
     return tx.fetchone()[0]
 
 
-def test_editing_a_press_release_does_not_retire_a_validated_report(tx):
-    """The bridge deliberately puts a press release on the same instrument as the report it
-    corroborates. An edit to the unreviewed press-release row must not unseat the desk-validated
-    row from the other source — which is exactly what an instrument-wide demote did."""
-    proj, report, pr = _two_source_instrument(tx, "validated")
-    _edit(tx, pr)
+def test_newest_version_is_shown_whether_or_not_it_is_validated(tx):
+    """docs/specs/memory_chain.md, locked decision: "Newest shown, validated trusted." The surfaced
+    row is the newest version even when an older one from another source has been signed off — the
+    needs_revalidation badge is what tells the analyst not to trust it blindly. Ranking validated
+    first instead would hide the fact that a newer source changed something, which is the whole
+    reason the version chain exists."""
+    proj, report, pr = _two_source_instrument(tx, "validated")   # report 2024 validated, PR 2026 pending
     chain.set_primary(tx, "project_name = %s", (proj,))
+    tx.execute("select is_primary from royalties where id = %s", (pr,))
+    assert tx.fetchone()[0] is True            # the newer press release is surfaced
     tx.execute("select is_primary from royalties where id = %s", (report,))
-    assert tx.fetchone()[0] is True
-    tx.execute("select count(*) from royalties where project_name = %s and is_primary", (proj,))
-    assert tx.fetchone()[0] == 1
+    assert tx.fetchone()[0] is False           # the validated report is retained as history, not lost
+    tx.execute("select count(*) from royalties where project_name = %s", (proj,))
+    assert tx.fetchone()[0] == 2               # nothing was deleted
 
 
-def test_editing_a_validated_report_surfaces_the_correction(tx):
-    """The other direction, and the one a naive validated-first rank breaks: an edit is written
-    status='pending', so standing has to be a property of the LINEAGE or the analyst's correction
-    loses to the very row it corrected."""
-    proj, report, pr = _two_source_instrument(tx, "validated")
-    new_id = _edit(tx, report)
+def test_an_edit_supersedes_its_own_previous_version(tx):
+    """An analyst correction appends a version and that version becomes the one shown for its source
+    lineage; the row it corrected is kept as history. This is what the lineage scoping is for — the
+    demote must reach the edited row's own lineage and stop there, rather than the whole instrument."""
+    proj, report, pr = _two_source_instrument(tx, "pending")
+    new_id = _edit(tx, pr)
     chain.set_primary(tx, "project_name = %s", (proj,))
     tx.execute("select is_primary from royalties where id = %s", (new_id,))
-    assert tx.fetchone()[0] is True
-    tx.execute("select is_primary from royalties where id in (%s,%s)", (report, pr))
-    assert [r[0] for r in tx.fetchall()] == [False, False]
+    assert tx.fetchone()[0] is True            # the correction is shown
+    tx.execute("select is_primary from royalties where id = %s", (pr,))
+    assert tx.fetchone()[0] is False           # the version it replaced is retained, not primary
 
 
 def test_exactly_one_primary_per_group_after_selection(tx):

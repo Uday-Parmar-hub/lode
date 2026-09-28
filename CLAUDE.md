@@ -52,9 +52,30 @@ dedupe.py             deterministic + ledger dedup → is_primary + dup_key + in
 audit_dupes_fable.py  Fable-5 duplicate audit → data/audit_merges.json  (candidates, not a score)
 apply_audit_fixes.py  apply human-confirmed audit merges (dry-run default)
 enrich_jurisdiction.py / flag_competitors.py / backfill_producing.py    enrichment (ledger + apply)
+
+ingest_edgar.py       EDGAR S-K 1300 corpus → data/edgar_royalties.json  (then load_royalties --source edgar)
+ingest_marketwatch.py press releases, batch → data/marketwatch_royalties.json
+add_one_to_lode.py    ONE press release → royalties (backs the MarketWatch "Add to LODE" button)
+eval_extraction.py    graded extraction quality over tests/fixtures/royalty_prs.json
+backfill_commodities.py   re-derive commodity arrays the old parser got wrong (dry-run default)
 ```
 
 ## Key technical decisions (do not relitigate)
+
+0. **Row identity and primary selection live in ONE module: `src/techreport/chain.py`.** It owns the
+   dup-key definition (what counts as the same real-world royalty), `link()` (assign `dup_key` /
+   `instrument_id` / `is_primary` to newly written rows) and `set_primary()`. `dedupe.py`,
+   `load_royalties.py` and `add_one_to_lode.py` all import them — they used to be defined in
+   `dedupe.py` alone, so the button loaded that *script* through importlib to borrow them and the
+   batch loader simply did without, leaving rows with a NULL `instrument_id`. That is not cosmetic: a
+   NULL `instrument_id` breaks the dashboard's edit path, whose demote runs
+   `WHERE instrument_id = <null>`, matches nothing, and leaves two current versions of one royalty.
+   `commodity.py` is the same story for the commodity-string parser. **Don't re-implement either.**
+
+   The display rule is **"newest shown, validated trusted"** (`docs/specs/memory_chain.md`, locked):
+   the surfaced row is the newest version whether or not it is signed off, and `needs_revalidation`
+   badges it. Ranking validated-first was tried and reverted — it hides the fact that a newer source
+   changed something, which is the whole reason the chain exists.
 
 1. **Reviewable ledgers.** Every LLM-proposed change (dedup, holder/asset resolution, jurisdiction, the
    Fable audit) writes a JSON ledger under `data/` a human reviews **before** apply. LLM proposes →
@@ -78,6 +99,19 @@ enrich_jurisdiction.py / flag_competitors.py / backfill_producing.py    enrichme
    royalty/stream stops; advance-payments and ROFR are kept as distinct features.
 10. **Kscope v2 SEDAR uses the `page` param** (not `start`) to reach deep history (2013–2017); the
     v3 resolver is lossy. Client is **vendored** in `src/techreport/kscope_client/` — don't hand-edit.
+
+## The MarketWatch bridge
+
+An analyst clicks "Add to LODE" on a royalty signal in MarketWatch and the release is staged here as
+`pending` for review. Built and validated against real press releases, **local only, not in
+production**, and fail-closed (without `LODE_BRIDGE_ENABLED` plus full config the button does not
+render). Full write-up — how it works, the invariants that are easy to break, what deploying needs,
+and the decisions waiting on a person — is **`docs/marketwatch_bridge.md`**. Read that before
+touching `add_one_to_lode.py`.
+
+`db/migrations/005_royalty_identity.sql` is written but **NOT applied**: it adds `rate` to the row
+identity and makes it NULLS NOT DISTINCT, and it refuses to run until the pre-existing duplicate
+groups are resolved. See its header.
 
 ## Source reality ("as far back as we can go")
 
