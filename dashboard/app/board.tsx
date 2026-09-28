@@ -51,6 +51,15 @@ const COLS: { k: keyof Royalty | "features"; t: string; w: number; nosort?: bool
   { k: "features", t: "Features", w: 12, nosort: true }, { k: "source_label", t: "Source", w: 8 },
 ];
 
+/** Marks a row whose instrument has had a new source or an analyst edit land on it since it was last
+ *  signed off. The column already existed and was set correctly — it was only ever rendered in the row
+ *  drawer and the version panel, so the one state that means "look at this again" was invisible in
+ *  every view an analyst actually scans. */
+function RevalFlag({ on }: { on: boolean }) {
+  if (!on) return null;
+  return <span className="revalflag" title="A new source or edit landed on this instrument — needs re-validation">⟳</span>;
+}
+
 function Commodity({ c }: { c: string[] }) {
   return <div className="comm">{(c || []).map((x, i) => <span key={i} style={{ ["--cc" as string]: M[x] || "#5f584c" }}>{x}</span>)}</div>;
 }
@@ -68,6 +77,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
   const [tier1, setTier1] = useState(false);
   const [compOnly, setCompOnly] = useState(false);
   const [producing, setProducing] = useState(false);
+  const [reval, setReval] = useState(false);
   const [sort, setSort] = useState<string>("rate_pct");
   const [dir, setDir] = useState(-1);
   const [view, setView] = useState<"table" | "cards">("table");
@@ -136,6 +146,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       if (tier1 && r.jurisdiction_tier !== 1) return false;
       if (compOnly && !r.competitor_holder) return false;
       if (producing && r.is_producing !== true) return false;
+      if (reval && !r.needs_revalidation) return false;
       if (words.length) {
         const blob = `${r.asset} ${r.operator ?? ""} ${r.juris ?? ""} ${r.continent ?? ""} ${r.country ?? ""} ${r.holder ?? ""} ${(r.commodity || []).join(" ")} ${r.stage ?? ""} ${r.type ?? ""} ${r.rate ?? ""} ${r.features_note ?? ""}`.toLowerCase();
         if (!words.every((w) => blob.includes(w))) return false;
@@ -149,7 +160,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
       out.sort((a, b) => { const x = sv(a), y = sv(b); if (x === y) return 0; if (x === "" || x === null) return 1; if (y === "" || y === null) return -1; return (x < y ? -1 : 1) * dir; });
     }
     return out;
-  }, [data, q, comm, regime, cont, tier1, compOnly, producing, sort, dir, aiIds, aiOrder]);
+  }, [data, q, comm, regime, cont, tier1, compOnly, producing, reval, sort, dir, aiIds, aiOrder]);
 
   const selIdx = selId ? rows.findIndex((r) => r.id === selId) : -1;
   const sel = selIdx >= 0 ? rows[selIdx] : null;
@@ -227,6 +238,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         <Chip label="Tier 1" color="#f5b23e" on={tier1} onClick={() => setTier1((v) => !v)} />
         <Chip label="Producing" color="#5fae7a" on={producing} onClick={() => setProducing((v) => !v)} />
         <Chip label="Competitor-held" color="#d98a7a" on={compOnly} onClick={() => setCompOnly((v) => !v)} />
+        <Chip label="Needs re-validation" color="#e6b45a" on={reval} onClick={() => setReval((v) => !v)} />
         <div className="rt">
           {!sel && <div className="toggle">
             <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>▤ Table</button>
@@ -256,7 +268,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
             {rows.map((r) => (
               <div key={r.id} className={`railrow${r.id === selId ? " active" : ""}`} onClick={() => setSelId(r.id)}>
                 <span className="vein" style={{ background: M[(r.commodity || [])[0]] || "#5f584c" }} />
-                <div className="rmid"><div className="rn">{r.asset}</div><div className="rsub">{r.operator ?? ""}</div></div>
+                <div className="rmid"><div className="rn">{r.asset}<RevalFlag on={r.needs_revalidation} /></div><div className="rsub">{r.operator ?? ""}</div></div>
                 <div className="rend"><div className="rr">{r.rate ?? "—"}</div><StatusDot s={r.status} /></div>
               </div>
             ))}
@@ -278,7 +290,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
             <tbody>
               {rows.map((r) => { const vein = M[(r.commodity || [])[0]] || "#5f584c"; const feats = featureList(r); return (
                 <tr key={r.id} onClick={() => setSelId(r.id)}>
-                  <td className="asset" style={{ ["--vein" as string]: vein }}><span className="vein" /><span className="nm">{r.asset}</span></td>
+                  <td className="asset" style={{ ["--vein" as string]: vein }}><span className="vein" /><span className="nm">{r.asset}</span><RevalFlag on={r.needs_revalidation} /></td>
                   <td className="op"><span className="cl">{r.operator}</span></td>
                   <td className="juris"><span className="cl">{r.juris}</span></td>
                   <td><Commodity c={r.commodity} /></td>
@@ -297,7 +309,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
           {rows.map((r) => { const vein = M[(r.commodity || [])[0]] || "#5f584c"; const feats = featureList(r); return (
             <div key={r.id} className="card" style={{ ["--vein" as string]: vein }} onClick={() => setSelId(r.id)}>
               <div className="ctop">
-                <div className="cinfo"><div className="nm">{r.asset}</div><div className="op2">{r.operator} · {r.juris}</div></div>
+                <div className="cinfo"><div className="nm">{r.asset}<RevalFlag on={r.needs_revalidation} /></div><div className="op2">{r.operator} · {r.juris}</div></div>
                 <div className="crate"><div className="rr">{r.rate ?? "—"}</div><div className="rt2">{r.type}</div></div>
               </div>
               <div className="mid"><Commodity c={r.commodity} />{r.stage && <span className="stage" title={r.stage}>{r.stage.replace(/\s*\([^)]*\)/g, "")}</span>}{feats.slice(0, 2).map((f, i) => <span key={i} className="fchip">{f.k}</span>)}</div>

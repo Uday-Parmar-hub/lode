@@ -112,6 +112,10 @@ tbody tr:hover .src{color:var(--gold-hi)}
   letter-spacing:.05em;padding:2px 7px;border-radius:6px;vertical-align:middle;white-space:nowrap}
 .prov.edited{color:var(--cyan);background:rgba(87,224,207,.1);border:1px solid rgba(87,224,207,.3)}
 .prov.reval{color:var(--warn);background:rgba(230,180,90,.1);border:1px solid rgba(230,180,90,.32)}
+/* compact needs-re-validation marker for the grid/rail/card views, where a full badge would eat the
+   column. Same warn colour as .prov.reval so the two read as one signal. */
+.revalflag{display:inline-block;margin-left:6px;color:var(--warn);font-size:11px;line-height:1;
+  vertical-align:middle;cursor:help}
 .editbtn{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--gold);cursor:pointer;
   background:transparent;border:1px solid var(--line-2);border-radius:7px;padding:3px 10px;transition:.13s}
 .editbtn:hover{background:var(--gold-soft,rgba(245,178,62,.08));border-color:var(--gold)}
