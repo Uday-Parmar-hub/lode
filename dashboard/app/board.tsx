@@ -183,8 +183,8 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
     setData((d) => d.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 
-  const Chip = ({ label, on, color, onClick }: { label: string; on: boolean; color?: string; onClick: () => void }) => (
-    <span className={`chip${on ? " on" : ""}`} style={color ? { ["--c" as string]: color } : undefined} onClick={onClick}>
+  const Chip = ({ label, on, color, onClick, title }: { label: string; on: boolean; color?: string; onClick: () => void; title?: string }) => (
+    <span className={`chip${on ? " on" : ""}`} style={color ? { ["--c" as string]: color } : undefined} onClick={onClick} title={title}>
       {color && <span className="sw" />}{label}
     </span>
   );
@@ -238,7 +238,8 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
         <Chip label="Tier 1" color="#f5b23e" on={tier1} onClick={() => setTier1((v) => !v)} />
         <Chip label="Producing" color="#5fae7a" on={producing} onClick={() => setProducing((v) => !v)} />
         <Chip label="Competitor-held" color="#d98a7a" on={compOnly} onClick={() => setCompOnly((v) => !v)} />
-        <Chip label="Needs re-validation" color="#e6b45a" on={reval} onClick={() => setReval((v) => !v)} />
+        <Chip label="⟳ Re-validate" on={reval} onClick={() => setReval((v) => !v)}
+          title="Only rows where a new source or an analyst edit landed since the record was last signed off" />
         <div className="rt">
           {!sel && <div className="toggle">
             <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>▤ Table</button>
@@ -290,7 +291,7 @@ export default function Board({ royalties, kpis }: { royalties: Royalty[]; kpis:
             <tbody>
               {rows.map((r) => { const vein = M[(r.commodity || [])[0]] || "#5f584c"; const feats = featureList(r); return (
                 <tr key={r.id} onClick={() => setSelId(r.id)}>
-                  <td className="asset" style={{ ["--vein" as string]: vein }}><span className="vein" /><span className="nm">{r.asset}</span><RevalFlag on={r.needs_revalidation} /></td>
+                  <td className="asset" style={{ ["--vein" as string]: vein }}><span className="vein" /><span className="nm">{r.asset}<RevalFlag on={r.needs_revalidation} /></span></td>
                   <td className="op"><span className="cl">{r.operator}</span></td>
                   <td className="juris"><span className="cl">{r.juris}</span></td>
                   <td><Commodity c={r.commodity} /></td>

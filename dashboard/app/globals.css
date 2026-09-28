@@ -44,11 +44,24 @@ body{font-family:'Manrope',system-ui,sans-serif;background:var(--bg);color:var(-
 .live .d{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 0 rgba(87,224,207,.6);animation:pulse 2.4s infinite}
 @keyframes pulse{70%{box-shadow:0 0 0 6px rgba(87,224,207,0)}100%{box-shadow:0 0 0 0 rgba(87,224,207,0)}}
 
-.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--line)}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:12px 24px;border-bottom:1px solid var(--line)}
 .glabel{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.11em;margin:0 2px}
-.chip{font-size:12px;font-weight:500;color:var(--text-2);border:1px solid var(--line);border-radius:999px;
-  padding:5px 11px;cursor:pointer;transition:.15s;background:#100e0b;display:inline-flex;align-items:center;gap:6px;user-select:none}
-.chip .sw{width:7px;height:7px;border-radius:2px;background:var(--c,var(--text-3))}
+/* Sized to keep the whole filter set on ONE line. There are ~20 chips, so a couple of pixels of
+   horizontal padding each is worth ~80px overall — enough that adding a filter no longer wraps the
+   row (and drags the right-hand view toggle down with it, since that uses margin-left:auto). */
+/* Sized so the whole filter row stays on ONE line. Measured (headless Chromium, real fonts): the
+   25 chips + group labels need ~1761px at this sizing, ~1868px at 12px/10px, ~1912px at 12px/11px.
+   The extra ~100px of visual fill is not worth ~107px of width headroom — at 12/10 the row wraps
+   on a 1800px window, and a wrap drags the Table/Cards toggle down with it (margin-left:auto). */
+.chip{font-size:11.5px;font-weight:500;color:var(--text-2);border:1px solid var(--line);border-radius:999px;
+  padding:5px 9px;cursor:pointer;transition:.15s;background:#100e0b;display:inline-flex;align-items:center;
+  justify-content:center;gap:5px;user-select:none;
+  /* Absorb the row's leftover width instead of leaving a ragged right edge, so the filter line ends
+     where the count below it ends. Growth is shared across all ~25 chips, so it is a few px each
+     rather than one stretched chip, and it self-corrects at any window width — a fixed larger size
+     would only ever land flush at one. max-width stops a sparse wrapped line stretching absurdly. */
+  flex:1 0 auto;max-width:150px}
+.chip .sw{width:6px;height:6px;border-radius:2px;background:var(--c,var(--text-3))}
 .chip:hover{color:var(--text);border-color:var(--line-2)}
 .chip.on{color:#12100c;background:var(--c,var(--gold));border-color:transparent;font-weight:600}
 .chip.on .sw{background:#12100c;opacity:.5}
