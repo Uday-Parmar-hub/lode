@@ -11,12 +11,11 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from techreport import config, royalty  # noqa: E402
+from techreport import config, royalty, verify  # noqa: E402
 
 CORPUS = config.CORPUS_DIR
 MAN = CORPUS / "_archive_manifest.json"
@@ -25,10 +24,6 @@ OUT = config.ROOT / "data" / "royalty_pilot.json"
 ap = argparse.ArgumentParser()
 ap.add_argument("--limit", type=int, default=None)
 args = ap.parse_args()
-
-
-def norm(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 
 results = json.loads(OUT.read_text()) if OUT.exists() else []
@@ -42,7 +37,7 @@ for m in archived:
     if args.limit is not None and n_new >= args.limit:
         break
     text = (CORPUS / m["txt"]).read_text(errors="ignore")
-    ntext = norm(text)
+    ntext = verify.normalize(text)
     rec = {k: m.get(k) for k in ("operator", "regime", "date", "docid", "txt")}
     passages = royalty.royalty_passages(text)
     if not passages:
@@ -53,7 +48,7 @@ for m in archived:
             roys = []
             for r in ex.royalties:
                 d = r.model_dump()
-                d["quote_verified"] = bool(r.quote) and norm(r.quote)[:80] in ntext
+                d["quote_verified"] = verify.quote_in_normalized(r.quote, ntext)
                 roys.append(d)
             rec.update(status="ok", project_name=ex.project_name, commodity=ex.commodity,
                        jurisdiction=ex.jurisdiction, stage=ex.stage,

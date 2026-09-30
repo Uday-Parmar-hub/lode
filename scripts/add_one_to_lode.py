@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from techreport import chain, db, royalty  # noqa: E402
+from techreport import chain, db, royalty, verify  # noqa: E402
 from techreport.commodity import commodities  # noqa: E402
 
 
@@ -112,7 +112,7 @@ def main() -> None:
             return
 
     text = rec.get("text") or ""
-    ntext = re.sub(r"\s+", " ", text).strip().lower()
+    ntext = verify.normalize(text)
 
     passages = royalty.royalty_passages(text)
     if not passages:
@@ -158,7 +158,7 @@ def main() -> None:
             "source_url": rec.get("url"),
             "source_date": rec.get("date"),
             "source_quote": re.sub(r"</?b>", "", r.quote or ""),
-            "quote_verified": bool(r.quote) and re.sub(r"\s+", " ", (r.quote or "")).strip().lower()[:80] in ntext,
+            "quote_verified": verify.quote_in_normalized(r.quote, ntext),
         })
 
     extracted = len(rows)

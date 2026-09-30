@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from techreport import config, royalty  # noqa: E402
+from techreport import config, royalty, verify  # noqa: E402
 
 OUT = config.ROOT / "data" / "marketwatch_royalties.json"
 
@@ -34,10 +34,6 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--mw-file", required=True, help="JSON export of MarketWatch royalty_change stories")
 ap.add_argument("--limit", type=int, default=None)
 args = ap.parse_args()
-
-
-def norm(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 
 def source_text(rec: dict) -> str:
@@ -65,7 +61,7 @@ for st in stories:
     if not text.strip():
         rec.update(status="no_text", has_third_party_royalty=False, royalties=[])
     else:
-        ntext = norm(text)
+        ntext = verify.normalize(text)
         passages = royalty.royalty_passages(text)
         if not passages:
             rec.update(status="no_passages", has_third_party_royalty=False, royalties=[])
@@ -76,7 +72,7 @@ for st in stories:
                 roys = []
                 for r in ex.royalties:
                     d = r.model_dump()
-                    d["quote_verified"] = bool(r.quote) and norm(r.quote)[:80] in ntext
+                    d["quote_verified"] = verify.quote_in_normalized(r.quote, ntext)
                     roys.append(d)
                 rec.update(status="ok", project_name=ex.project_name, commodity=ex.commodity,
                            jurisdiction=ex.jurisdiction, stage=ex.stage,
