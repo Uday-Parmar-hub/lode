@@ -95,9 +95,14 @@ def _with_extractor_note(other_terms: str | None, notes: str | None) -> str | No
     return f"{other_terms}\n\n{note}" if other_terms else note
 
 
-def main() -> None:
-    raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8") if len(sys.argv) > 1 else sys.stdin.read()
-    rec = json.loads(raw)
+def ingest_one(rec: dict) -> dict:
+    """Extract one press release and stage its royalties. Returns the result dict.
+
+    The whole ingestion in one callable so both front doors share it exactly: this CLI (used
+    locally and by the tests) and the HTTP service in api/ that the production dashboard calls.
+    Duplicating this in TypeScript inside the Next app was the alternative and would have meant two
+    extractors drifting apart.
+    """
     docid = rec.get("docid")
 
     # Idempotent per press release: one PR -> one ingestion. If this story is already in LODE, don't
@@ -108,16 +113,15 @@ def main() -> None:
                 cur.execute("SELECT project_name FROM royalties WHERE source_docid = %s LIMIT 1", (docid,))
                 row = cur.fetchone()
         if row:
-            print(json.dumps({"inserted": 0, "already": True, "project": row[0]}))
-            return
+            return {"inserted": 0, "already": True, "project": row[0]}
 
     text = rec.get("text") or ""
     ntext = verify.normalize(text)
 
     passages = royalty.royalty_passages(text)
     if not passages:
-        print(json.dumps({"inserted": 0, "reason": "no royalty passage found in this release"}))
-        return
+        return {"inserted": 0, "extracted": 0,
+                "reason": "no royalty passage found in this release"}
 
     # issuer_hint, NOT operator_hint: the wire item tells us who ISSUED the release, not who
     # operates the property, and asserting the issuer is the operator excludes a royalty the
@@ -199,7 +203,13 @@ def main() -> None:
         out["skipped_detail"] = [
             {"type": r["royalty_type"], "rate": r["rate"], "holder": r["holder"]} for r in skipped
         ]
-    print(json.dumps(out))
+    return out
+
+
+def main() -> None:
+    """CLI front door: a JSON record from argv[1] or stdin, the result on stdout."""
+    raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8") if len(sys.argv) > 1 else sys.stdin.read()
+    print(json.dumps(ingest_one(json.loads(raw))))
 
 
 if __name__ == "__main__":
