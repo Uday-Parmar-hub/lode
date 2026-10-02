@@ -110,6 +110,10 @@ def ingest(release: Release, x_ms_client_principal: str | None = Header(default=
     # found no royalty language (Claude was never called) versus Claude read it and found no royalty.
     # Both show the analyst "No royalty found"; only the log says which, and that is the difference
     # between a prompt problem and a filter problem.
+    # skipped_detail names the royalties the unique index refused. They are NOT recoverable by
+    # clicking again — the idempotency probe sees the row that DID store and returns "already" — so
+    # if it is not in this log line the only record that they were ever extracted is gone.
     log.info("ingested %s -> %s", release.docid,
-             {k: result.get(k) for k in ("inserted", "extracted", "skipped", "already", "reason")})
+             {k: result.get(k) for k in
+              ("inserted", "extracted", "skipped", "already", "reason", "skipped_detail")})
     return result
