@@ -2,6 +2,10 @@
 
 > **Read this first each session. Keep it accurate; update it when major decisions change.**
 
+> **Wider context:** LODE is one of three tools. The map of all of them — what exists, how they
+> connect, who owns what, and why the corpus can currently only grow US-only — is `docs/START_HERE.md`
+> in the MarketWatch repo (`OR-Royalties-Inc/MarketWatch`).
+
 LODE is a **royalty-origination database**: it reads OR Royalties' library of mining technical reports
 (NI 43-101 / S-K 1300 / JORC) and extracts every **existing third-party royalty or stream** — an
 encumbrance held by someone *other* than the operator, i.e. a potential **acquisition target** — into a
