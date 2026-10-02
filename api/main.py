@@ -31,6 +31,12 @@ from pydantic import BaseModel
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+# Uvicorn configures handlers for its own loggers only, so a bare getLogger() here writes to the
+# root logger, which has none — every log.info below was being dropped on the floor, and the only
+# trace of an ingest in the container logs was uvicorn's access line. Without this you cannot tell a
+# call that staged four royalties from one that found none, which is exactly the question you ask
+# the logs. basicConfig is a no-op if the host already configured logging.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("lode.ingest")
 
 # scripts/ is not a package; load the module by path (the tests do the same).
@@ -100,5 +106,10 @@ def ingest(release: Release, x_ms_client_principal: str | None = Header(default=
     except Exception as e:                                    # noqa: BLE001 — surface, don't leak
         log.exception("ingest failed for %s", release.docid)
         raise HTTPException(status_code=500, detail=f"ingestion failed: {type(e).__name__}") from e
-    log.info("ingested %s -> %s", release.docid, {k: result.get(k) for k in ("inserted", "skipped", "already")})
+    # `extracted` and `reason` separate the two ways a call can stage nothing: the passage filter
+    # found no royalty language (Claude was never called) versus Claude read it and found no royalty.
+    # Both show the analyst "No royalty found"; only the log says which, and that is the difference
+    # between a prompt problem and a filter problem.
+    log.info("ingested %s -> %s", release.docid,
+             {k: result.get(k) for k in ("inserted", "extracted", "skipped", "already", "reason")})
     return result
