@@ -15,7 +15,41 @@ from `scripts/` (not a 24/7 poller like MarketWatch); the DB is loaded via Cloud
 
 ## Deploy the dashboard (run from `dashboard/`; bump `vN` each time)
 
-Current live: `v4`.
+Current live: `v5`.
+
+> ### ⚠ Check the schema BEFORE you deploy
+>
+> `az acr build` ships your **local working tree**, so a deploy carries every query written since the
+> last one — including ones that need columns a migration added. Migrations do **not** run themselves:
+> port 5432 is blocked from the office, so they are a manual Cloud Shell step, and "I wrote a
+> migration" and "it ran in prod" are two unconnected things.
+>
+> This has already bitten once. Production sat **four migrations behind** the code; deploying picked
+> up a query selecting `is_producing`, and the dashboard failed mid-render with
+> `column "is_producing" does not exist`. Rolled back to the previous tag, applied the migrations,
+> redeployed.
+>
+> In **Azure Cloud Shell** — no repo clone and no password needed, the connection string lives in the
+> container app's secret:
+>
+> ```bash
+> CONN=$(az containerapp secret show -g RG-Marketwatch -n lode-dashboard \
+>          --secret-name database-url --query value -o tsv)
+>
+> psql "$CONN" -c "select column_name from information_schema.columns
+>                   where table_name='royalties'
+>                     and column_name in ('country','state_province','continent','jurisdiction_tier',
+>                         'competitor_holder','dup_key','instrument_id','origin','needs_revalidation',
+>                         'is_producing') order by 1"
+> ```
+>
+> Expect **10 rows**. Anything missing: apply the matching `db/migrations/00N_*.sql` (all are additive
+> and idempotent — safe to re-run, and their backfills are `WHERE ... IS NULL` so nothing is
+> overwritten). **Do not apply `005`** — it is deliberately unapplied and refuses to run anyway.
+>
+> The app also checks this itself at startup now (`dashboard/instrumentation.ts`) and logs exactly
+> which column and which migration are missing, so a drift shows up in
+> `az containerapp logs show` rather than as a raw Postgres error in a user's face.
 
 ```bash
 cd dashboard
