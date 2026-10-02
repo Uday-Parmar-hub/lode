@@ -1,0 +1,18 @@
+# Build context hygiene. Without this, `az acr build .` from the repo root uploads ~9GB — the
+# corpus alone is 8.4GB — and the client hangs before the build is even submitted. The ingestion
+# image needs src/, scripts/add_one_to_lode.py and api/ and nothing else.
+corpus/
+data/
+.git/
+.github/
+**/node_modules/
+**/.next/
+**/__pycache__/
+**/*.pyc
+tests/
+docs/
+db/
+dashboard/
+*.log
+.env
+.venv/

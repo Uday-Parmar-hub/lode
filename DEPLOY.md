@@ -61,6 +61,29 @@ az containerapp update -g RG-Marketwatch -n lode-dashboard --image ormwacr01.azu
   (e.g. rotate the gate: `--set-env-vars LODE_BASIC_AUTH="matt:<new-pw>"`).
 - **Verify:** `az containerapp logs show -g RG-Marketwatch -n lode-dashboard --tail 60`.
 
+## Deploy the ingestion service (`lode-ingest`) — what the "Add to LODE" button calls
+
+Built from the **repo root** (it needs `src/` and `scripts/`), unlike the dashboard which builds from
+`dashboard/`:
+
+```bash
+az acr build --registry ormwacr01 --image lode-ingest:vN --file api/Dockerfile .
+az containerapp update -g RG-Marketwatch -n lode-ingest --image ormwacr01.azurecr.io/lode-ingest:vN
+```
+
+> **The repo root needs `.dockerignore`, and it is load-bearing.** `az acr build .` uploads the whole
+> context, and this repo carries an **8.4GB `corpus/`**. Without the ignore file the client hangs
+> before the build is ever submitted — it does not error, it just sits there, and ACR shows no run at
+> all. That is what a first attempt did. If a build appears to hang, check the context size before
+> anything else.
+
+Ingress is **internal** — reachable only from inside the `mw-env` Container Apps environment, never
+from the internet. Authorisation additionally requires the caller to hold the `Royalties.Ingest` app
+role, which MarketWatch's managed identity was granted.
+
+Never set `LODE_INGEST_ALLOW_ANON` in production: it bypasses the role check, and the service would
+then accept any caller that can reach it from inside the environment.
+
 ## Data (DB is loaded/updated out-of-band, via Cloud Shell)
 
 The dashboard only *reads* the DB. To change the data you run the pipeline locally against a DB, then
