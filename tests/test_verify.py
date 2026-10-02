@@ -95,3 +95,39 @@ def test_prefix_ratio_separates_near_misses_from_fabrication():
     stitched = "A separate 1.0% gross overriding royalty applies to a completely invented property."
     assert 0.0 < verbatim_prefix_ratio(stitched, DOC) < 1.0
     assert verbatim_prefix_ratio("nothing here matches at all zzz", DOC) < 0.2
+
+
+# ---------------------------------------------------------------- elision
+ELIDED_SOURCE = (
+    "This decision allows Metalore to preserve its cash while retaining its Brookbank royalty "
+    "interests: a 1.5% Net Smelter Return (NSR) on the Cherbourg-Foxear properties (which surround "
+    "the main Brookbank gold deposit) and 1.0% NSR on the Walters-Leduc-Legault properties to the "
+    "east,  should JV expenditures dilute Metalore's ownership percentage in either project area "
+    "to 10% or less."
+)
+
+
+def test_an_ellipsis_joined_quote_is_not_verbatim():
+    """A quote that cuts out its own middle is not verbatim, and must not be badged as if it were.
+
+    This is the real row 1221. One sentence stated two royalties, and asking for a quote per royalty
+    led the model to elide the sibling with '...'. Royalty.quote now demands one CONTIGUOUS run of
+    text for exactly this reason — the prompt is the fix; this asserts the check that caught it."""
+    elided = ("a 1.5% Net Smelter Return (NSR) on the Cherbourg-Foxear properties (which surround "
+              "the main Brookbank gold deposit) ... should JV expenditures dilute Metalore's "
+              "ownership percentage in either project area to 10% or less.")
+    assert quote_is_verbatim(elided, ELIDED_SOURCE) is False
+    # Roughly half of it matches before the elision — the signature of a genuine quote cut short,
+    # not of a fabricated one, which is what the ratio exists to tell apart.
+    assert 0.4 < verbatim_prefix_ratio(elided, ELIDED_SOURCE) < 0.7
+
+
+def test_the_contiguous_form_of_the_same_quote_verifies():
+    """Quoting the whole sentence — sibling royalty and all — is what the field now asks for, and it
+    verifies. Double spaces in the source are collapsed by normalize(), so they cost nothing."""
+    contiguous = ("a 1.5% Net Smelter Return (NSR) on the Cherbourg-Foxear properties (which "
+                  "surround the main Brookbank gold deposit) and 1.0% NSR on the "
+                  "Walters-Leduc-Legault properties to the east, should JV expenditures dilute "
+                  "Metalore's ownership percentage in either project area to 10% or less.")
+    assert quote_is_verbatim(contiguous, ELIDED_SOURCE) is True
+    assert verbatim_prefix_ratio(contiguous, ELIDED_SOURCE) == 1.0

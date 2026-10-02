@@ -62,7 +62,13 @@ class Royalty(BaseModel):
     step_down: str | None = Field(None, description="sliding-scale / step-down (rate varies by price, grade, or time); state it; null if none")
     rofr: bool | None = Field(None, description="true only if a right of first refusal or first offer on the royalty is mentioned")
     other_terms: str | None = Field(None, description="any other material term not captured by the fields above; null if none")
-    quote: str = Field(description="the exact verbatim sentence(s) from the report stating this royalty — never paraphrased")
+    # "Contiguous" is the load-bearing word. One sentence often states several royalties, and asking
+    # for a quote PER royalty pushes the model to cut the siblings out with an ellipsis — which is
+    # not verbatim, so quote_verified comes back false on a quote that is otherwise perfectly honest.
+    # A real one: "...gold deposit) ... should JV expenditures dilute..." scored 0.527, breaking at
+    # exactly the elision. Quoting the whole sentence including the other royalty costs nothing: the
+    # quote exists so an analyst can find the passage, not to be minimal.
+    quote: str = Field(description="the exact verbatim sentence(s) from the report stating this royalty — copied as one CONTIGUOUS run of text, never paraphrased and never joined with '...'. If a single sentence states several royalties, quote that whole sentence for each one; including the others is fine and expected")
 
 
 class RoyaltyExtraction(BaseModel):
