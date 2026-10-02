@@ -98,8 +98,11 @@ CREATE TABLE royalties (
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),    -- "Date Modified"
 
     -- a source can legitimately disclose several distinct royalties on one asset, so the dedupe key
-    -- includes the holder + type, not just the doc.
-    UNIQUE (source_docid, project_name, holder, royalty_type)
+    -- includes the holder + type, not just the doc. `rate` joined it in migration 007: without it
+    -- two royalties differing only in rate looked identical here and the second was dropped by
+    -- ON CONFLICT DO NOTHING — narrower than collapse_repeats(), which is the rule actually meant
+    -- to decide what counts as a duplicate.
+    UNIQUE (source_docid, project_name, holder, royalty_type, rate)
 );
 
 CREATE INDEX idx_roy_status       ON royalties (status);

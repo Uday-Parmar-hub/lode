@@ -6,7 +6,9 @@
 Each extracted royalty becomes one row (status='pending'). Availability + the human/score fields are
 left blank on purpose — they're analyst judgment, not in the report. After load, marks the newest source
 per (asset, holder, type) as is_primary WITHIN the loaded source (the global cross-source dedup is
-dedupe.py's job, via dup_key). Idempotent: ON CONFLICT (source_docid, project_name, holder, type) skips.
+dedupe.py's job, via dup_key). Idempotent: ON CONFLICT DO NOTHING skips whatever the database's
+unique constraint considers a duplicate — (source_docid, project_name, holder, royalty_type, rate)
+since migration 007.
 """
 from __future__ import annotations
 
@@ -61,8 +63,11 @@ INSERT INTO royalties
   %(partial_coverage)s,%(advance_payments)s,%(production_threshold)s,%(production_cap)s,%(buyback)s,%(step_down)s,%(rofr)s,%(features_note)s,
   %(regime)s,%(source_docid)s,%(source_label)s,%(source_url)s,%(source_date)s,%(source_quote)s,%(quote_verified)s,
   'pending',%(ingested_from)s,%(origin)s)
- ON CONFLICT (source_docid, project_name, holder, royalty_type) DO NOTHING
+ ON CONFLICT DO NOTHING
 """
+# Bare, with no column list, for the reason spelled out in add_one_to_lode.py: naming the columns
+# requires a unique constraint of exactly that shape to exist, which welds this file to migration
+# 007's before-and-after and breaks whichever of the two lands first.
 
 # is_primary within the loaded source; %(ing)s is bound, not interpolated.
 PRIMARY = """
@@ -88,7 +93,11 @@ for rec in ledger:
         continue
     for roy in rec["royalties"]:
         rows.append({
-            "project_name": rec.get("project_name") or rec.get("operator") or "?",
+            # Per-royalty property first, same precedence as the bridge's add_one_to_lode.py — a
+            # document covering several properties must not file them all under one project name, or
+            # the unique index on (source_docid, project_name, holder, royalty_type) reads them as
+            # duplicates. Older ledger records have no property_name and fall through unchanged.
+            "project_name": roy.get("property_name") or rec.get("project_name") or rec.get("operator") or "?",
             "operator": rec.get("operator"),
             "commodity": commodities(rec.get("commodity")),
             "jurisdiction": rec.get("jurisdiction"),

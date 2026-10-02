@@ -250,10 +250,14 @@ def test_edit_duplicates_when_instrument_id_is_missing(tx):
     assert tx.fetchone()[0] == 2   # the bug, pinned so a regression is loud
 
 
-def test_colliding_royalty_is_reported_as_skipped(tx):
-    """Two royalties from one release that differ only in rate collide on the unique index
-    (source_docid, project_name, holder, royalty_type) — rate is not part of it. The insert must be
-    counted by rowcount, not by how many rows were attempted, or a lost royalty reads as success."""
+def test_royalties_differing_only_in_rate_both_store(tx):
+    """Migration 007: `rate` is part of the uniqueness key, so two royalties that differ only in
+    rate are two instruments and both land.
+
+    This test asserted the opposite until 007 — that the second was dropped — which is what the
+    constraint did, and it was wrong. collapse_repeats() already keyed on rate and every structured
+    term, so the index was narrower than the rule meant to back it up and silently discarded
+    royalties collapse_repeats had deliberately kept."""
     docid = f"pytest-{uuid.uuid4().hex[:8]}"
     stored = skipped = 0
     for rate, pct in (("2%", 2), ("1%", 1)):
@@ -263,9 +267,44 @@ def test_colliding_royalty_is_reported_as_skipped(tx):
             stored += 1
         else:
             skipped += 1
+    assert (stored, skipped) == (2, 0)
+    tx.execute("select count(*) from royalties where source_docid=%s", (docid,))
+    assert tx.fetchone()[0] == 2
+
+
+def test_identical_royalty_is_still_reported_as_skipped(tx):
+    """007 widened the key; it did not remove it. A genuinely identical royalty must still be
+    refused, and the caller must count by rowcount rather than by rows attempted — otherwise a
+    royalty the database dropped reads back to the analyst as a success."""
+    docid = f"pytest-{uuid.uuid4().hex[:8]}"
+    stored = skipped = 0
+    for _ in range(2):
+        tx.execute(add_one.INSERT, _roy(project_name="Same Project", holder="Newmont Corporation",
+                                        royalty_type="NSR", rate="2%", rate_pct=2, source_docid=docid))
+        if tx.rowcount == 1:
+            stored += 1
+        else:
+            skipped += 1
     assert (stored, skipped) == (1, 1)
     tx.execute("select count(*) from royalties where source_docid=%s", (docid,))
-    assert tx.fetchone()[0] == 1   # only one landed; the caller must say so
+    assert tx.fetchone()[0] == 1
+
+
+def test_same_royalty_on_two_properties_both_store(tx):
+    """The Metalore case: one release, an NSR on each of two properties, identical in every other
+    respect. They are separate instruments on separate ground and both must land.
+
+    Before Royalty.property_name every royalty from a document inherited one project_name, so these
+    two arrived identical, the index refused the second, and the release reported "Added 1 of 2"
+    with no way to recover the other — a later click finds the stored row and returns `already`."""
+    docid = f"pytest-{uuid.uuid4().hex[:8]}"
+    for project in ("Cherbourg-Foxear", "Walters-Leduc-Legault"):
+        tx.execute(add_one.INSERT, _roy(project_name=project, holder="Metalore Resources",
+                                        royalty_type="NSR", rate="1.5%", rate_pct=1.5,
+                                        source_docid=docid))
+        assert tx.rowcount == 1, f"{project} was refused"
+    tx.execute("select count(*) from royalties where source_docid=%s", (docid,))
+    assert tx.fetchone()[0] == 2
 
 
 def test_landing_on_a_validated_instrument_requests_revalidation(tx):

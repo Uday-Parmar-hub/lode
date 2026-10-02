@@ -43,6 +43,13 @@ def royalty_passages(text: str, *, window: int = 1200, cap: int = 40000) -> str:
 
 
 class Royalty(BaseModel):
+    # Per-royalty, because one document can describe royalties over SEVERAL properties while
+    # RoyaltyExtraction.project_name holds only one. That is safe for a technical report (it describes
+    # one property) and wrong for a press release: a Metalore release naming a 1.5% NSR on
+    # Cherbourg-Foxear and a 1.0% NSR on Walters-Leduc-Legault produced three rows all carrying the
+    # same project name, which the unique index read as duplicates and silently dropped two of.
+    # Null means "burdens the project as a whole", so every single-property document is unchanged.
+    property_name: str | None = Field(None, description="the specific property, claim block or project THIS royalty burdens, when the text names royalties over more than one property; null if it burdens the project as a whole")
     royalty_type: str | None = Field(None, description="NSR, GSR, NPI, gross revenue, metal stream, advance minimum royalty, etc.")
     rate: str | None = Field(None, description="the rate exactly as stated, e.g. '2%', '0.5-1.0%', 'US$5/oz'")
     holder: str | None = Field(None, description="the party ENTITLED to the royalty (the potential seller); null if the report doesn't name it")
@@ -119,7 +126,12 @@ issuer's role is NOT given. The issuer may operate the property, may be the roya
 royalty company announcing an acquisition, or a vendor retaining a royalty), or may be neither. Do NOT \
 assume the issuer is the operator — work out each royalty's holder and the property's operator from the \
 text itself. A royalty HELD BY the issuer over a property it does not operate is still a third-party \
-royalty for our purposes and must be included: it is precisely the kind we would buy."""
+royalty for our purposes and must be included: it is precisely the kind we would buy.
+
+A release often covers SEVERAL properties at once (e.g. "1.5% on A, 1.0% on B"). When it does, set each \
+royalty's `property_name` to the specific property THAT royalty burdens — they are separate instruments \
+on separate ground, not one royalty. Leave `property_name` null when the release concerns a single \
+property; `project_name` already carries it."""
 
 
 def extract(passages: str, operator_hint: str | None = None,
@@ -131,6 +143,10 @@ def extract(passages: str, operator_hint: str | None = None,
                    operator_hint for news, never both — asserting a false operator is what inverts
                    the third-party test. With issuer_hint unset the prompt is byte-identical to the
                    technical-report one, so report extraction is unchanged.
+
+    Royalty.property_name is in the schema for both, but only the press-release note asks for it: a
+    technical report describes one property, so the model leaves it null there and callers fall back
+    to RoyaltyExtraction.project_name exactly as before.
     """
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     schema = RoyaltyExtraction.model_json_schema()

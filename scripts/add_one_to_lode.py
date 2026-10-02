@@ -46,8 +46,16 @@ INSERT INTO royalties
   %(partial_coverage)s,%(advance_payments)s,%(production_threshold)s,%(production_cap)s,%(buyback)s,%(step_down)s,%(rofr)s,%(features_note)s,
   %(regime)s,%(source_docid)s,%(source_label)s,%(source_url)s,%(source_date)s,%(source_quote)s,%(quote_verified)s,
   'pending','marketwatch','marketwatch',true)
- ON CONFLICT (source_docid, project_name, holder, royalty_type) DO NOTHING
+ ON CONFLICT DO NOTHING
 """
+# No column list on purpose. `ON CONFLICT (a, b, c)` has to name a unique constraint that exists
+# EXACTLY, so pinning the columns here welds this file to the current shape of that constraint:
+# migration 007 widens it to include `rate`, and whichever of the migration or this image lands
+# second, the other would spend that window raising "no unique or exclusion constraint matching the
+# ON CONFLICT specification" on every insert. Migrations are applied by hand in Cloud Shell and the
+# image deploys separately, so that window is real. The intent here is "skip what the database
+# considers a duplicate", which is what the bare form says. `royalties` has exactly one unique
+# constraint besides its generated id, so there is nothing else this could swallow.
 
 
 # Every field that distinguishes one royalty from another on the write path. Keyed on all of them so
@@ -130,7 +138,10 @@ def ingest_one(rec: dict) -> dict:
     rows = []
     for r in ex.royalties:
         rows.append({
-            "project_name": ex.project_name or rec.get("company") or "?",
+            # r.property_name FIRST: a release naming royalties over several properties gives each
+            # one its own ground. ex.project_name holds a single value for the whole document, so
+            # without this they collide on the unique index and all but one are dropped.
+            "project_name": r.property_name or ex.project_name or rec.get("company") or "?",
             # The operator the extractor READ FROM THE TEXT, not the release's issuer. Stamping the
             # issuer here was affirmatively wrong in the case this tool most cares about: on an
             # Orogen Royalties release the row claimed Orogen operated First Majestic's Ermitaño
