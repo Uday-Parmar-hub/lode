@@ -63,19 +63,25 @@ az containerapp update -g RG-Marketwatch -n lode-dashboard --image ormwacr01.azu
 
 ## Deploy the ingestion service (`lode-ingest`) — what the "Add to LODE" button calls
 
-Built from the **repo root** (it needs `src/` and `scripts/`), unlike the dashboard which builds from
-`dashboard/`:
+**Build from a STAGED context, not the repo root.** The service needs `src/`, `api/` and one script,
+but the repo root carries an **8.4GB `corpus/`** — and `az acr build` did **not** honour the root
+`.dockerignore`: it sat uploading for six minutes without ACR ever registering a run, twice. It does
+not error, it just hangs. Staging the three directories it actually needs takes the context from
+~9GB to **244KB** and the build submits immediately.
 
 ```bash
-az acr build --registry ormwacr01 --image lode-ingest:vN --file api/Dockerfile .
+B=/tmp/lode-ingest-build; rm -rf $B; mkdir -p $B/scripts
+cd ~/projects/tech_report_db
+cp -r src api $B/ && cp scripts/add_one_to_lode.py $B/scripts/
+find $B -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null
+cp api/Dockerfile.staged $B/Dockerfile      # COPY paths are relative to the staged root
+
+cd $B && az acr build --registry ormwacr01 --image lode-ingest:vN --file Dockerfile .
 az containerapp update -g RG-Marketwatch -n lode-ingest --image ormwacr01.azurecr.io/lode-ingest:vN
 ```
 
-> **The repo root needs `.dockerignore`, and it is load-bearing.** `az acr build .` uploads the whole
-> context, and this repo carries an **8.4GB `corpus/`**. Without the ignore file the client hangs
-> before the build is ever submitted — it does not error, it just sits there, and ACR shows no run at
-> all. That is what a first attempt did. If a build appears to hang, check the context size before
-> anything else.
+> If any ACR build appears to hang with no output, check the context size first — `du -sh .` in the
+> directory you are building from. A silent client almost always means it is still uploading.
 
 Ingress is **internal** — reachable only from inside the `mw-env` Container Apps environment, never
 from the internet. Authorisation additionally requires the caller to hold the `Royalties.Ingest` app
